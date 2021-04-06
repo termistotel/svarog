@@ -1,5 +1,3 @@
-# from pylib.dblink import DBlink
-# from pylib.irregularNameTest import testIfRegular
 from pylib.movable_content import StepProgButton, ManualProgButton
 from kivy.uix.label import Label
 from kivy.uix.button import Button
@@ -28,10 +26,10 @@ def picToTextureBuffer(matrix):
 key_order = ["ar_flow", "h2_flow", "Temperature_sample", "Temperature_halcogenide", "time"]
 init_data = {}
 for key in key_order:
-    init_data[key] = []
+    init_data[key] = np.ones((0,), dtype= np.float32)
 
 class MainBox(RelativeLayout):
-    graph_data = init_data
+    graph_data = init_data.copy()
     getps = NumericProperty(2.0)
     max_step_num = 5
     min_step_num = 0
@@ -41,8 +39,8 @@ class MainBox(RelativeLayout):
     setpointTimer = None
     setpoints = {"ar_flow": 0, "h2_flow": 0, "Temperature_sample": 0, "Temperature_halcogenide": 0}
     setpoints_toset = {}
-    address = ""
-    port = ""
+    address = "127.0.0.1"
+    port = "1234"
     plot_points_num = 1000
 
     def change_step_num(self, dn):
@@ -66,22 +64,24 @@ class MainBox(RelativeLayout):
         choice_bar.add_widget(Label(size_hint_y=1-self.step_config_size_hint_y*n))
 
     def drop_data(self):
-        self.graph_data["time"] = []
-        self.graph_data["ar_flow"] = []
-        self.graph_data["h2_flow"] = []
-        self.graph_data["Temperature_sample"] = []
-        self.graph_data["Temperature_halcogenide"] = []
+        self.graph_data= init_data.copy()
+        # self.graph_data["time"] = []
+        # self.graph_data["ar_flow"] = []
+        # self.graph_data["h2_flow"] = []
+        # self.graph_data["Temperature_sample"] = []
+        # self.graph_data["Temperature_halcogenide"] = []
 
     def set_plot_points(self):
         t0 = self.t0.timestamp()
         N = max((len(self.graph_data["time"])//self.plot_points_num)*2, 1)
-        print(N)
 
         ts = self.graph_data["time"][::N]
         arfs = self.graph_data["ar_flow"][::N]
         h2fs = self.graph_data["h2_flow"][::N]
         sTs = self.graph_data["Temperature_sample"][::N]
         hTs = self.graph_data["Temperature_halcogenide"][::N]
+        # print(N, type(ts), ts.size, np.min(ts), np.max(ts))
+        # print(N, type(arfs), arfs.size, np.min(arfs), np.max(arfs))        
 
         self.control.ar_flow_plot.points = [((t - t0)/60, v) for t, v in zip(ts, arfs)]
         self.control.h2_flow_plot.points = [((t - t0)/60, v) for t, v in zip(ts, h2fs)]
@@ -99,23 +99,27 @@ class MainBox(RelativeLayout):
     def update_graphs(self, values):
         t0 = self.t0.timestamp()
         maxys = self.getmaxys()
-        t = t0
-        for row in values:
-            t = row["time"]
-            self.control.ar_flow_plot.points.append([(t - t0)/60, row["ar_flow"]])
-            self.control.h2_flow_plot.points.append([(t - t0)/60, row["h2_flow"]])
-            self.control.samp_temp_plot.points.append([(t - t0)/60, row["Temperature_sample"]])
-            self.control.halc_temp_plot.points.append([(t - t0)/60, row["Temperature_halcogenide"]])
-            maxys[0] = max(maxys[0], row["ar_flow"])
-            maxys[1] = max(maxys[1], row["h2_flow"])
-            maxys[2] = max(maxys[2], row["Temperature_sample"])
-            maxys[3] = max(maxys[3], row["Temperature_halcogenide"])
+        # maxys = [np.max(values[key]) for key in key_order]
 
-        tmax = t
+        ts = values["time"]
+        for t, val in zip((ts-t0)/60, values["ar_flow"]):
+            self.control.ar_flow_plot.points.append([t, val])
+        for t, val in zip((ts-t0)/60, values["h2_flow"]):            
+            self.control.h2_flow_plot.points.append([t, val])
+        for t, val in zip((ts-t0)/60, values["Temperature_sample"]):            
+            self.control.samp_temp_plot.points.append([t, val])
+        for t, val in zip((ts-t0)/60, values["Temperature_halcogenide"]):            
+            self.control.halc_temp_plot.points.append([t, val])
+        maxys[0] = np.amax(values["ar_flow"], initial=maxys[0])
+        maxys[1] = np.amax(values["h2_flow"], initial=maxys[1])
+        maxys[2] = np.amax(values["Temperature_sample"], initial=maxys[2])
+        maxys[3] = np.amax(values["Temperature_halcogenide"], initial=maxys[3])
+
+        tmax = np.amax(ts, initial=t0)
 
         N = (len(self.control.ar_flow_plot.points)//2) * 2
         if N > self.plot_points_num:
-            print(N)
+            # print(N)
             self.set_plot_points()
 
         widget_list = self.graphs
@@ -152,7 +156,7 @@ class MainBox(RelativeLayout):
         current_t = self.current_t.timestamp()
 
         try:
-            resp = requests.get(url, params={"t0": current_t-1})
+            resp = requests.get(url, params={"t0": current_t-2})
             returned = resp.text
             returned = json.loads(returned)
             resp.close()
@@ -160,18 +164,24 @@ class MainBox(RelativeLayout):
             graph_data = returned["data"]
             setpoints = returned["setpoints"]
 
-            for row in graph_data:
-                t = row["time"]
-                if t in self.graph_data["time"]:
+            indices = []
+            time_length = len(graph_data["time"])
+            for i, val in enumerate(graph_data["time"]):
+                if val in self.graph_data["time"][-time_length:]:
                     continue
                 else:
-                    for key in row:
-                        self.graph_data[key].append(row[key])
-                    current_t = t
+                    indices.append(i)
 
-            if len(graph_data) > 0:
-                self.current_t = datetime.datetime.fromtimestamp(current_t)
+            for key in graph_data:
+                graph_data[key] = np.array(graph_data[key])[indices]
+                self.graph_data[key] = np.append(self.graph_data[key], graph_data[key])
 
+            if graph_data["time"].size > 0:
+                current_t = np.amax(graph_data["time"])
+                # print(np.max(graph_data["time"]))
+            else:
+                current_t = min(current_t + float(returned["maxTime"]), datetime.datetime.now().timestamp())
+            self.current_t = datetime.datetime.fromtimestamp(current_t)
 
             self.update_graphs(graph_data)
             self.update_setpoints(setpoints, update_widgets=update_widgets)
@@ -222,7 +232,6 @@ class MainBox(RelativeLayout):
         params = {}
         for key in self.setpoints_toset:
             params[key] = self.setpoints_toset[key]
-
         try:
             resp = requests.get(url, params=params)
             resp.close()
@@ -256,6 +265,39 @@ class MainBox(RelativeLayout):
         self.ids.date.text = self.t0.date().isoformat()
         self.ids.time.text = self.t0.time().isoformat()
 
+    def start_plan(self, address=None, port=None):
+        if address is None:
+            address = self.address
+        if port is None:
+            port = self.port
+        plan_url = "http://"+address+":"+port+"/add_to_program"
+        run_url = "http://"+address+":"+port+"/start_program"
+
+        def send_plan(plan_list):
+            if not plan_list:
+                return
+            resp = requests.get(plan_url, params=plan_list[0])
+            resp.close()
+            send_plan(plan_list[1:])
+
+        # Read plan
+        plan_list = []
+        N = int(self.ids.step_num.text)
+        for plan_widget in [step.lockChild for step in self.steps[:N]]:
+            plan = {"ar_flow": plan_widget.ids.ar_flow.value,
+                    "h2_flow": plan_widget.ids.h2_flow.value,
+                    "Temperature_sample": plan_widget.ids.samp_temp.value,
+                    "Temperature_halcogenide": plan_widget.ids.halc_temp.value,
+                    "time": plan_widget.ids.time.value}
+            plan_list.append(plan)
+
+        # Send plan
+        send_plan(plan_list)
+
+        # Start program
+        name = datetime.datetime.now().isoformat()
+        resp = requests.get(run_url, params={"state": "start", "name": name})
+        resp.close()
 
     def __init__(self, db, **kwargs):
         super(MainBox, self).__init__(**kwargs)
@@ -325,24 +367,29 @@ class Control(GridLayout):
         flow_color = [1, 0, 0, 1]
         temp_color = [0, 1, 0, 1]
         setpoint_color = [0.5, 0.5, 1, 1]
-        point_size = 2
+        # point_size = 2
+        line_width = 2
 
-        self.ar_flow_plot = ScatterPlot(color=flow_color, point_size=point_size)
+        # self.ar_flow_plot = ScatterPlot(color=flow_color, point_size=point_size)
+        self.ar_flow_plot = LinePlot(color=flow_color, line_width=line_width)
         self.ar_flow_setpoint_plot = HBar(color=setpoint_color)
         self.ids.ar_flow.add_plot(self.ar_flow_plot)
         self.ids.ar_flow.add_plot(self.ar_flow_setpoint_plot)
 
-        self.h2_flow_plot = ScatterPlot(color=flow_color, point_size=point_size)
+        # self.h2_flow_plot = ScatterPlot(color=flow_color, point_size=point_size)
+        self.h2_flow_plot = LinePlot(color=flow_color, line_width=line_width)
         self.h2_flow_setpoint_plot = HBar(color=setpoint_color)
         self.ids.h2_flow.add_plot(self.h2_flow_plot)
         self.ids.h2_flow.add_plot(self.h2_flow_setpoint_plot)
 
-        self.samp_temp_plot = ScatterPlot(color=temp_color, point_size=point_size)
+        # self.samp_temp_plot = ScatterPlot(color=temp_color, point_size=point_size)
+        self.samp_temp_plot = LinePlot(color=temp_color, line_width=line_width)
         self.samp_temp_setpoint_plot = HBar(color=setpoint_color)
         self.ids.samp_temp.add_plot(self.samp_temp_plot)
         self.ids.samp_temp.add_plot(self.samp_temp_setpoint_plot)
 
-        self.halc_temp_plot = ScatterPlot(color=temp_color, point_size=point_size)
+        # self.halc_temp_plot = ScatterPlot(color=temp_color, point_size=point_size)
+        self.halc_temp_plot = LinePlot(color=temp_color, line_width=line_width)
         self.halc_temp_setpoint_plot = HBar(color=setpoint_color)
         self.ids.halc_temp.add_plot(self.halc_temp_plot)
         self.ids.halc_temp.add_plot(self.halc_temp_setpoint_plot)
