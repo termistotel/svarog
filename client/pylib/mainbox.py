@@ -1,6 +1,6 @@
 # from pylib.dblink import DBlink
 # from pylib.irregularNameTest import testIfRegular
-from pylib.FilterMenu import StepProgButton, ManualProgButton
+from pylib.movable_content import StepProgButton, ManualProgButton
 from kivy.uix.label import Label
 from kivy.uix.button import Button
 from kivy.uix.togglebutton import ToggleButton
