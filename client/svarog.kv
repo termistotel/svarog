@@ -1,0 +1,382 @@
+#: import partial functools.partial
+
+<MainBox>:
+	BoxLayout:
+		orientation: 'horizontal'
+		BoxLayout:
+			id: start_box
+			choice_bar: choice_bar.__self__
+			manual_bar: manual_bar.__self__
+			size_hint_x: root.main_pad_x
+			orientation: 'vertical'
+			Label:
+				size_hint_y: root.main_pad_y
+				text: "Svarog"
+			RelativeLayout:
+				id: choice_bar
+				orientation: 'vertical'
+			RelativeLayout:
+				id: manual_bar
+				orientation: 'vertical'
+		BoxLayout:
+			orientation: 'vertical'
+			BoxLayout:
+				id: setup_bar
+				size_hint_y: root.main_pad_y
+				step_box: step_box.__self__
+				step_ph: step_ph.__self__
+				Label:
+					size_hint_x: 0.1
+				ToggleButton:
+					id: prog_toggle
+					text: "Program"
+					size_hint_x: 0.1
+					on_state: root.auto_toggle(self)
+				BoxLayout:
+					id: step_box
+					orientation: 'horizontal'
+					size_hint_x: 0.3
+					Button:
+						id: step_num_dec
+						size_hint_x: 0.1
+						text: "<"
+					TextInput:
+						id: step_num
+						size_hint_x: 0.1
+						input_filter: 'int'
+						text: "0"
+					Button:
+						id: step_num_inc
+						size_hint_x: 0.1
+						text: ">"
+				Label:
+					id: step_ph
+					size_hint_x: 0.3
+				Label:
+					size_hint_x: 0.6
+				Label:
+					size_hint_x: 0.1
+				TextInput:
+					id: date
+					size_hint_x: 0.15
+					multiline: False
+					on_text_validate: root.changet0(date.text, time.text)
+				TextInput:
+					id: time
+					size_hint_x: 0.1
+					multiline: False
+					on_text_validate: root.changet0(date.text, time.text)
+				Button:
+					size_hint_x: 0.1
+					id: zero_button
+					text: "now"
+					on_press: root.changet0()
+				Label:
+					size_hint_x: 0.1
+				Button:
+					size_hint_x: 0.1
+					id: start_button
+					text: "Start"
+
+			BoxLayout:
+				id: display_box
+
+			BoxLayout:
+				id: address
+				orientation: 'horizontal'
+				size_hint_y: 0.05
+				TextInput:
+					id: address
+					size_hint_x: 0.15
+					multiline: False
+					text: "127.0.0.1"
+					on_text_validate: root.connect(address.text, port.text)
+				TextInput:
+					id: port
+					size_hint_x: 0.06
+					multiline: False
+					text: "1234"
+					on_text_validate: root.connect(address.text, port.text)
+				Button:
+					id: connect
+					size_hint_x: 0.1
+					text: "Connect"
+					on_press: root.connect(address.text, port.text)
+				Label:
+				ToggleButton:
+					group: "displays"
+					size_hint_x: 0.1
+				ToggleButton:
+					group: "displays"
+					size_hint_x: 0.1
+				ToggleButton:
+					group: "displays"
+					size_hint_x: 0.1
+
+<Control>:
+	cols: 2
+	padding: 5
+	RTdisp:
+		id: ar_flow
+		default_x: (-0, 15/8)
+		default_y: (0, 200)
+		default_ticks: (0.5, 50)
+		xmin: -0
+		xmax: 15/8
+		ymin: 0
+		ymax: 200
+		xlabel: 't [min]'
+		ylabel: 'Ar [sccm]'
+		x_ticks_major: 0.5
+		x_grid: True
+		x_grid_label: True
+		y_ticks_major: 50
+		y_grid_label: True
+		padding: 5
+	RTdisp:
+		id: samp_temp
+		default_x: (-0, 15/8)
+		default_y: (0, 300)
+		default_ticks: (0.5, 75)
+		xmin: -0
+		xmax: 15/8
+		ymin: 0
+		ymax: 300
+		xlabel: 't [min]'
+		ylabel: 'T [C]'
+		x_ticks_major: 0.5
+		x_grid: True
+		x_grid_label: True
+		y_ticks_major: 75
+		y_grid_label: True
+		padding: 5
+	RTdisp:
+		id: h2_flow
+		default_x: (-0, 15/8)
+		default_y: (0, 5)
+		default_ticks: (0.5, 1.25)
+		xmin: -0
+		xmax: 15/8
+		ymin: 0
+		ymax: 5
+		xlabel: 't [min]'
+		ylabel: 'H2 [sccm]'
+		x_ticks_major: 0.5
+		x_grid: True
+		x_grid_label: True
+		y_ticks_major: 1.25
+		y_grid_label: True
+		padding: 5
+	RTdisp:
+		id: halc_temp
+		default_x: (-0, 15/8)
+		default_y: (0, 200)
+		default_ticks: (0.5, 50)
+		xmin: -0
+		xmax: 15/8
+		ymin: 0
+		ymax: 200
+		xlabel: 't [min]'
+		ylabel: 'Th [C]'
+		x_ticks_major: 0.5
+		x_grid: True
+		x_grid_label: True
+		y_ticks_major: 50
+		y_grid_label: True
+		padding: 5
+
+<StepMoveableContent>:
+	canvas:
+		Color:
+			rgba: 0.7, 0.5, 0.5, 0.6
+		Rectangle:
+			pos: self.pos
+			size: self.size
+
+		Color:
+			rgba: 0, 0, 0, 0.5
+		Line:
+            width: 2
+            rectangle: self.x, self.y, self.width, self.height	
+	size_hint: (self.lockParent.contentLength, None)
+	height: self.lockParent.height
+	padding: 5
+	orientation: 'horizontal'
+
+	y: self.lockParent.y
+
+	lowVal: self.lockParent.x - self.width
+	highVal: self.lockParent.x + self.lockParent.width
+
+	# Label:
+	# 	size_hint_x: 0.1
+	# 	text: 'flow'
+	BoxLayout:
+		orientation: 'vertical'
+		size_hint_x: 0.3
+		spacing: 5
+		ControlBox:
+			value: 0
+			min_val: 0
+			max_val: 200
+			name: "Ar [sccm]"
+			perc_inc: 1.0
+			precision: 0
+			typ: "linear"
+		ControlBox:
+			value: 0
+			min_val: 0
+			max_val: 5
+			name: "H2 [sccm]"
+			perc_inc: 0.1
+			precision: 1
+			typ: "linear"
+	Label:
+		size_hint_x: 0.05
+	# Label:
+	# 	size_hint_x: 0.1
+	# 	text: 'T'
+	BoxLayout:
+		orientation: 'vertical'
+		size_hint_x: 0.3
+		spacing: 5
+		ControlBox:
+			value: 25
+			min_val: 1
+			max_val: 1200
+			name: "Sample [C]"
+			perc_inc: 0.1
+			precision: 0
+			typ: "exp"
+		ControlBox:
+			value: 25
+			min_val: 1
+			max_val: 200
+			name: "Prec [C]"
+			precision: 1
+			perc_inc: 0.1
+			typ: "exp"
+
+	Label:
+		size_hint_x: 0.05
+
+	ControlBox:
+		size_hint_x: 0.4
+		value: 0
+		min_val: 0
+		max_val: 120
+		name: "Time [min]"
+		perc_inc: 0.5
+		precision: 1
+		typ: "linear"
+
+<ManualMoveableContent>:
+	canvas:
+		Color:
+			rgba: 0.5, 0.5, 0.7, 0.6
+		Rectangle:
+			pos: self.pos
+			size: self.size
+
+		Color:
+			rgba: 0, 0, 0, 0.5
+		Line:
+            width: 2
+            rectangle: self.x, self.y, self.width, self.height	
+
+	size_hint: (self.lockParent.contentLength, None)
+	height: self.lockParent.height/4
+	padding: 5
+	orientation: 'horizontal'
+	# y: (self.lockParent.y + self.lockParent.height/2 - self.height/2)
+	y: (self.lockParent.y + self.lockParent.height - self.height)
+
+	lowVal: self.lockParent.x - self.width
+	highVal: self.lockParent.x + self.lockParent.width
+
+	GridLayout:
+		cols: 3
+		spacing: 5
+		ControlBox:
+			size_hint_x: 0.4
+			id: ar_flow
+			value: 0
+			min_val: 0
+			max_val: 200
+			name: "Ar [sccm]"
+			perc_inc: 1.0
+			precision: 0
+			typ: "linear"
+			on_value: root.main.set_setpoint({"ar_flow": self.value})
+		Label:
+			size_hint_x: 0.05
+		ControlBox:
+			size_hint_x: 0.4
+			id: samp_temp
+			value: 25
+			min_val: 1
+			max_val: 1200
+			name: "Sample [C]"
+			perc_inc: 0.1
+			precision: 0
+			typ: "exp"
+			on_value: root.main.set_setpoint({"Temperature_sample": self.value})
+		ControlBox:
+			size_hint_x: 0.4
+			id: h2_flow
+			value: 0
+			min_val: 0
+			max_val: 5
+			name: "H2 [sccm]"
+			perc_inc: 0.1
+			precision: 1
+			typ: "linear"
+			on_value: root.main.set_setpoint({"h2_flow": self.value})
+		Label:
+			size_hint_x: 0.05
+		ControlBox:
+			size_hint_x: 0.4
+			id: halc_temp
+			value: 25
+			min_val: 1
+			max_val: 200
+			name: "Halc [C]"
+			precision: 1
+			perc_inc: 0.1
+			typ: "exp"
+			on_value: root.main.set_setpoint({"Temperature_halcogenide": self.value})
+
+<ControlBox>:
+	orientation: 'horizontal'
+	Label:
+		size_hint_x: 0.4
+		text: root.name
+	# Label:
+	BoxLayout:
+		orientation: 'vertical'
+		size_hint_x: 0.6
+		BoxLayout:
+			orientation: 'horizontal'
+			Button:
+				id: dec
+				size_hint_x: 0.22
+				text: "<"
+				on_press: root.change_value(-1)
+			TextInput:
+				id: val
+				size_hint_x: 0.22
+				multiline: False
+				input_filter: 'float'
+				text: ('{0:.'+str(root.precision)+'f}').format(root.value)
+				on_text_validate: root.value = min(root.max_val, max(root.min_val, float(self.text)))
+			Button:
+				id: inc
+				size_hint_x: 0.22
+				text: ">"
+				on_press:  root.change_value(1)
+		BoxLayout:
+			Slider:
+				min: root.min_val
+				max: root.max_val
+				value: root.value
+				on_value: root.value = self.value
