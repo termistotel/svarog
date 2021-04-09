@@ -1,6 +1,6 @@
 <MainBox>:
-	main_pad_y: 0.05
-	main_pad_x: 0.05
+	main_pad_y = 0.1
+	main_pad_x = 0.06
 	BoxLayout:
 		orientation: 'horizontal'
 		BoxLayout:
@@ -29,7 +29,7 @@
 					size_hint_x: 0.1
 				ToggleButton:
 					id: prog_toggle
-					text: "Program"
+					text: "Prog"
 					size_hint_x: 0.1
 					on_state: root.auto_toggle(self)
 				BoxLayout:
@@ -54,16 +54,14 @@
 					size_hint_x: 0.3
 				Label:
 					size_hint_x: 0.6
-				Label:
-					size_hint_x: 0.1
 				TextInput:
 					id: date
-					size_hint_x: 0.15
+					size_hint_x: 0.2
 					multiline: False
 					on_text_validate: root.changet0(date.text, time.text)
 				TextInput:
 					id: time
-					size_hint_x: 0.1
+					size_hint_x: 0.15
 					multiline: False
 					on_text_validate: root.changet0(date.text, time.text)
 				Button:
@@ -85,22 +83,22 @@
 			BoxLayout:
 				id: address
 				orientation: 'horizontal'
-				size_hint_y: 0.05
+				size_hint_y: root.main_pad_y
 				TextInput:
 					id: address
-					size_hint_x: 0.15
+					size_hint_x: 0.3
 					multiline: False
 					text: root.address
 					on_text_validate: root.connect(address.text, port.text)
 				TextInput:
 					id: port
-					size_hint_x: 0.06
+					size_hint_x: 0.11
 					multiline: False
 					text: root.port
 					on_text_validate: root.connect(address.text, port.text)
 				Button:
 					id: connect
-					size_hint_x: 0.1
+					size_hint_x: 0.15
 					text: "Connect"
 					on_press: root.connect(address.text, port.text)
 				Label:
@@ -199,7 +197,7 @@
 		Line:
             width: 2
             rectangle: self.x, self.y, self.width, self.height	
-	size_hint: (self.lockParent.contentLength, None)
+	size_hint: (self.lockParent.contentLength*1.2, None)
 	height: self.lockParent.height
 	padding: 5
 	orientation: 'horizontal'
@@ -245,8 +243,8 @@
 		spacing: 5
 		ControlBox:
 			id: samp_temp
-			value: 25
-			min_val: 1
+			value: 0
+			min_val: 25
 			max_val: 1200
 			name: "Sample [C]"
 			perc_inc: 1
@@ -254,8 +252,8 @@
 			typ: "linear_round"
 		ControlBox:
 			id: halc_temp
-			value: 25
-			min_val: 1
+			value: 0
+			min_val: 25
 			max_val: 200
 			name: "Prec [C]"
 			precision: 0
@@ -274,7 +272,7 @@
 		name: "Time [min]"
 		perc_inc: 0.5
 		precision: 1
-		typ: "linear"
+		typ: "linear_round"
 
 <ManualMoveableContent>:
 	canvas:
@@ -291,7 +289,7 @@
             rectangle: self.x, self.y, self.width, self.height	
 
 	size_hint: (self.lockParent.contentLength, None)
-	height: self.lockParent.height/4
+	height: self.lockParent.height/3
 	padding: 5
 	orientation: 'horizontal'
 	# y: (self.lockParent.y + self.lockParent.height/2 - self.height/2)
@@ -320,7 +318,7 @@
 			size_hint_x: 0.4
 			id: samp_temp
 			value: 25
-			min_val: 1
+			min_val: 0
 			max_val: 1200
 			name: "Sample [C]"
 			perc_inc: 1
@@ -344,7 +342,7 @@
 			size_hint_x: 0.4
 			id: halc_temp
 			value: 25
-			min_val: 1
+			min_val: 0
 			max_val: 200
 			name: "Halc [C]"
 			precision: 0
@@ -385,4 +383,7 @@
 				min: root.min_val
 				max: root.max_val
 				value: root.value
+				# on_value: root.value = self.value
+				# on_value: root.value = root.perc_inc * (self.value//root.perc_inc)
+				# on_value: root.value = round(root.perc_inc * (self.value//round(root.perc_inc, root.precision)), root.precision)
 				on_value: root.value = round(root.perc_inc * (round(self.value*10**root.precision)//round(root.perc_inc*10**root.precision)), root.precision)

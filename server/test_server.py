@@ -124,7 +124,7 @@ class FurnaceServer(object):
         database = sqlite3.connect(self.dbName)
         db_read_cursor = database.cursor()
 
-        db_read_cursor.execute('SELECT * FROM logs WHERE (time>=?) AND (time<=?)', (float(t0), float(t0) + self.maxTime))
+        db_read_cursor.execute('SELECT * FROM logs WHERE (time>=?) AND (time<=?) ORDER BY time asc', (float(t0), float(t0) + self.maxTime))
 
         ret = {}
 

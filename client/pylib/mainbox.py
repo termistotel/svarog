@@ -1,27 +1,20 @@
 from pylib.movable_content import StepProgButton, ManualProgButton
-from kivy.uix.label import Label
-from kivy.uix.button import Button
-from kivy.uix.togglebutton import ToggleButton
-from kivy_garden.graph import Graph, MeshLinePlot, SmoothLinePlot, LinePlot, HBar, ScatterPlot
+from kivy_garden.graph import Graph, LinePlot, HBar
 
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.gridlayout import GridLayout
 from kivy.uix.relativelayout import RelativeLayout
-from kivy.graphics.texture import Texture
+
+from kivy.uix.label import Label
 from kivy.clock import Clock
 
-from kivy.properties import ObjectProperty, NumericProperty, StringProperty
+from kivy.properties import NumericProperty, StringProperty
 
 from functools import partial
 
 import numpy as np
-import cv2
 
 import json, requests, time, datetime
-
-# Function for converting cv2 image type, to kivy texture type
-def picToTextureBuffer(matrix):
-    return cv2.flip(matrix[:,:,[2,1,0]],0).tostring()
 
 key_order = ["ar_flow", "h2_flow", "Temperature_sample", "Temperature_halcogenide", "time"]
 init_data = {}
@@ -30,11 +23,11 @@ for key in key_order:
 
 class MainBox(RelativeLayout):
     graph_data = init_data.copy()
-    getps = NumericProperty(2.0)
+    getps = NumericProperty(1.0)
     max_step_num = 5
     min_step_num = 0
-    main_pad_y = NumericProperty(0.05)
-    main_pad_x = NumericProperty(0.05)
+    main_pad_y = NumericProperty(0.1)
+    main_pad_x = NumericProperty(0.06)
     step_config_size_hint_y = 0.99/max_step_num
     setpointTimer = None
     setpoints = {"ar_flow": 0, "h2_flow": 0, "Temperature_sample": 0, "Temperature_halcogenide": 0}
@@ -299,9 +292,8 @@ class MainBox(RelativeLayout):
         resp = requests.get(run_url, params={"state": "start", "name": name})
         resp.close()
 
-    def __init__(self, db, **kwargs):
+    def __init__(self, **kwargs):
         super(MainBox, self).__init__(**kwargs)
-        self.database = db
         self.t0 = datetime.datetime.now()
         self.t0 = self.t0.replace(microsecond=0)
         self.current_t = self.t0
@@ -368,7 +360,7 @@ class Control(GridLayout):
         temp_color = [0, 1, 0, 1]
         setpoint_color = [0.5, 0.5, 1, 1]
         # point_size = 2
-        line_width = 2
+        line_width = 3
 
         # self.ar_flow_plot = ScatterPlot(color=flow_color, point_size=point_size)
         self.ar_flow_plot = LinePlot(color=flow_color, line_width=line_width)
@@ -410,6 +402,9 @@ class ControlBox(BoxLayout):
             value += sign*self.perc_inc*value
         elif self.typ == "linear":
             value += sign*self.perc_inc
+        elif self.typ == "linear_round":
+            value = value + sign*self.perc_inc
+            # value = (tmp_value//self.perc_inc) * self.perc_inc
 
         value = min(self.max_val, max(self.min_val, value))
         self.value = value

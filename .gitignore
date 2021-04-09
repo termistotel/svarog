@@ -3,3 +3,8 @@
 *.pyc
 *__pycache__/*
 *thrash/*
+*windows_build/*
+*.buildozer/*
+*bin/*
+*build/*
+*dist/*

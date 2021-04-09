@@ -1,16 +1,9 @@
-from kivy.uix.relativelayout import RelativeLayout
 from kivy.uix.boxlayout import BoxLayout
-from kivy.uix.gridlayout import GridLayout
 from kivy.uix.togglebutton import ToggleButton
-from kivy.uix.accordion import Accordion, AccordionItem
-from kivy.uix.button import Button
 
 from kivy.properties import NumericProperty
-from kivy.properties import ObjectProperty
 
 from kivy.animation import Animation
-
-from functools import partial
 
 class StepProgButton(ToggleButton):
 	def __init__(self, main, contentLength=0.7, **kwargs):

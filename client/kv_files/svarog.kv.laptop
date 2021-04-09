@@ -1,6 +1,4 @@
 <MainBox>:
-	main_pad_y: 0.05
-	main_pad_x: 0.05
 	BoxLayout:
 		orientation: 'horizontal'
 		BoxLayout:
@@ -249,18 +247,18 @@
 			min_val: 1
 			max_val: 1200
 			name: "Sample [C]"
-			perc_inc: 1
+			perc_inc: 0.1
 			precision: 0
-			typ: "linear_round"
+			typ: "exp"
 		ControlBox:
 			id: halc_temp
 			value: 25
 			min_val: 1
 			max_val: 200
 			name: "Prec [C]"
-			precision: 0
-			perc_inc: 1
-			typ: "linear_round"
+			precision: 1
+			perc_inc: 0.1
+			typ: "exp"
 
 	Label:
 		size_hint_x: 0.05
@@ -323,9 +321,9 @@
 			min_val: 1
 			max_val: 1200
 			name: "Sample [C]"
-			perc_inc: 1
+			perc_inc: 0.1
 			precision: 0
-			typ: "linear_round"
+			typ: "exp"
 			on_value: root.main.set_setpoint({"Temperature_sample": self.value})
 		ControlBox:
 			size_hint_x: 0.4
@@ -347,9 +345,9 @@
 			min_val: 1
 			max_val: 200
 			name: "Halc [C]"
-			precision: 0
-			perc_inc: 1
-			typ: "linear_round"
+			precision: 1
+			perc_inc: 0.1
+			typ: "exp"
 			on_value: root.main.set_setpoint({"Temperature_halcogenide": self.value})
 
 <ControlBox>:
@@ -385,4 +383,4 @@
 				min: root.min_val
 				max: root.max_val
 				value: root.value
-				on_value: root.value = round(root.perc_inc * (round(self.value*10**root.precision)//round(root.perc_inc*10**root.precision)), root.precision)
+				on_value: root.value = self.value
