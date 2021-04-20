@@ -194,13 +194,13 @@ class FurnaceServer(object):
         if T_samp_i is not None:
             self.sample_gains[1] = float(T_samp_i)
         if T_samp_d is not None:
-            self.sample_gains[0] = float(T_samp_d)
+            self.sample_gains[2] = float(T_samp_d)
         if T_halc_p is not None:
             self.halcogenide_gains[0] = float(T_halc_p)
         if T_halc_i is not None:
             self.halcogenide_gains[1] = float(T_halc_i)
         if T_halc_d is not None:
-            self.halcogenide_gains[0] = float(T_halc_d)
+            self.halcogenide_gains[2] = float(T_halc_d)
         self.send_gains()
         return "gains set"
 
