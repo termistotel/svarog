@@ -25,13 +25,13 @@ double halc_temp = 0;
 float ar_flow = 0;
 float h2_flow = 0;
 
-double main_temp_setpoint = 100;
-double halc_temp_setpoint = 100;
+double main_temp_setpoint = 0;
+double halc_temp_setpoint =   0;
 float ar_flow_setpoint = 0;
 float h2_flow_setpoint = 0;
 
 double main_gains[] = {1, 1, 1};
-double halc_gains[] = {1, 1, 1};
+double halc_gains[] = {50, 20, 250};
 
 double main_temp_output = 0;
 double halc_temp_output = 0;
@@ -42,6 +42,7 @@ int ibuff = 0;
 //Define temperature PID control
 PID main_temp_control(&main_temp, &main_temp_output, &main_temp_setpoint, main_gains[0], main_gains[1], main_gains[2], DIRECT);
 PID halc_temp_control(&halc_temp, &halc_temp_output, &halc_temp_setpoint, halc_gains[0], halc_gains[1], halc_gains[2], DIRECT);
+
 
 //Define read devices
 MAX6675 main_read(mainCLK, mainCS, mainDO);
@@ -83,10 +84,13 @@ void loop() {
     main_temp_control.Compute();
     halc_temp_control.Compute();
 
-//    dac.begin(addrs[0]);
-//    dac.setVoltage(4095*(ar_flow_setpoint/200), false);
+    dac.begin(addrs[0]);
+    dac.setVoltage(4095*(ar_flow_setpoint/204.13), false);
     dac.begin(addrs[1]);
-    dac.setVoltage(4095*(h2_flow_setpoint/200), false);
+    dac.setVoltage(4095*(h2_flow_setpoint/20.52), false);
+
+    analogWrite(A3,halc_temp_output);
+    analogWrite(A4,main_temp_output);
 
     // PLACEHOLDER:
     // This should be replaced by actual reading of flow
