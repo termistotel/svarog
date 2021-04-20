@@ -45,6 +45,9 @@
                         size_hint_x: 0.1
                         input_filter: 'int'
                         text: "0"
+                        write_tab: False
+                        is_focusable: True
+
                     Button:
                         id: step_num_inc
                         size_hint_x: 0.1
@@ -53,7 +56,69 @@
                     id: step_ph
                     size_hint_x: 0.3
                 Label:
-                    size_hint_x: 0.6
+                    size_hint_x: 0.2
+                BoxLayout:
+                    size_hint_x: 0.2
+                    Label:
+                        text: "main"
+                    TextInput:
+                        id: p_main
+                        input_filter: 'float'
+                        text: "1"
+                        multiline: False
+                        write_tab: False
+                        is_focusable: True
+                        on_focus: if not self.focus: root.set_gains({"p_main": self.text})
+                        on_focus: if self.focus: self.select_all()
+                    TextInput:
+                        id: i_main
+                        input_filter: 'float'
+                        text: "1"
+                        multiline: False
+                        write_tab: False
+                        is_focusable: True
+                        on_focus: if not self.focus: root.set_gains({"i_main": self.text})
+                        on_focus: if self.focus: self.select_all()
+                    TextInput:
+                        id: d_main
+                        input_filter: 'float'
+                        text: "1"
+                        multiline: False
+                        write_tab: False
+                        is_focusable: True
+                        on_focus: if not self.focus: root.set_gains({"d_main": self.text})
+                        on_focus: if self.focus: self.select_all()
+                BoxLayout:
+                    size_hint_x: 0.2
+                    Label:
+                        text: 'halc'
+                    TextInput:
+                        id: p_halc
+                        input_filter: 'float'
+                        text: "50"
+                        multiline: False
+                        write_tab: False
+                        is_focusable: True
+                        on_focus: if not self.focus: root.set_gains({"p_halc": self.text})
+                        on_focus: if self.focus: self.select_all()
+                    TextInput:
+                        id: i_halc
+                        input_filter: 'float'
+                        text: "50"
+                        multiline: False
+                        write_tab: False
+                        is_focusable: True
+                        on_focus: if not self.focus: root.set_gains({"i_halc": self.text})
+                        on_focus: if self.focus: self.select_all()
+                    TextInput:
+                        id: d_halc
+                        input_filter: 'float'
+                        text: "250"
+                        multiline: False
+                        write_tab: False
+                        is_focusable: True
+                        on_focus: if not self.focus: root.set_gains({"d_halc": self.text})
+                        on_focus: if self.focus: self.select_all()
                 Label:
                     size_hint_x: 0.1
                 TextInput:
@@ -61,11 +126,15 @@
                     size_hint_x: 0.15
                     multiline: False
                     on_text_validate: root.changet0(date.text, time.text)
+                    write_tab: False
+                    is_focusable: True
                 TextInput:
                     id: time
                     size_hint_x: 0.1
                     multiline: False
                     on_text_validate: root.changet0(date.text, time.text)
+                    write_tab: False
+                    is_focusable: True
                 Button:
                     size_hint_x: 0.1
                     id: zero_button
@@ -90,12 +159,16 @@
                     id: address
                     size_hint_x: 0.15
                     multiline: False
+                    write_tab: False
+                    is_focusable: True
                     text: root.address
                     on_text_validate: root.connect(address.text, port.text)
                 TextInput:
                     id: port
                     size_hint_x: 0.06
                     multiline: False
+                    write_tab: False
+                    is_focusable: True
                     text: root.port
                     on_text_validate: root.connect(address.text, port.text)
                 Button:
@@ -372,9 +445,12 @@
                 id: val
                 size_hint_x: 0.22
                 multiline: False
+                write_tab: False
+                is_focusable: True
                 input_filter: 'float'
                 text: ('{0:.'+str(root.precision)+'f}').format(root.value)
-                on_text_validate: root.value = min(root.max_val, max(root.min_val, float(self.text)))
+                on_focus: if not self.focus: root.value = min(root.max_val, max(root.min_val, float(self.text)))
+                on_focus: if self.focus: self.select_all()
             Button:
                 id: inc
                 size_hint_x: 0.22

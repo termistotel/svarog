@@ -30,8 +30,11 @@ class MainBox(RelativeLayout):
     main_pad_x = NumericProperty(0.06)
     step_config_size_hint_y = 0.99/max_step_num
     setpointTimer = None
+    gainsTimer = None
     setpoints = {"ar_flow": 0, "h2_flow": 0, "Temperature_sample": 0, "Temperature_halcogenide": 0}
     setpoints_toset = {}
+    gains = {'p_main': 1, 'i_main': 1, 'd_main': 1, 'p_halc': 1, 'i_halc': 1, 'd_halc': 1}
+    gains_toset = {}
     address = "127.0.0.1"
     port = "1234"
     plot_points_num = 1000
@@ -58,11 +61,6 @@ class MainBox(RelativeLayout):
 
     def drop_data(self):
         self.graph_data= init_data.copy()
-        # self.graph_data["time"] = []
-        # self.graph_data["ar_flow"] = []
-        # self.graph_data["h2_flow"] = []
-        # self.graph_data["Temperature_sample"] = []
-        # self.graph_data["Temperature_halcogenide"] = []
 
     def set_plot_points(self):
         t0 = self.t0.timestamp()
@@ -217,6 +215,15 @@ class MainBox(RelativeLayout):
         if any_flag and (self.setpointTimer is None):
             self.setpointTimer = Clock.schedule_once(self.send_setpoint, 1/self.getps)
 
+    def set_gains(self, gains):
+        any_flag = False
+        for key in gains:
+            if self.gains[key] != gains[key]:
+                self.gains_toset[key] = gains[key]
+                any_flag = True
+        if any_flag and (self.gainsTimer is None):
+            self.gainsTimer = Clock.schedule_once(self.send_gain, 1/self.getps)
+
     def send_setpoint(self, dt=0):
         address = self.address
         port = self.port
@@ -232,6 +239,22 @@ class MainBox(RelativeLayout):
             print(e)
         self.setpointTimer = None
         self.setpoints_toset = {}
+
+    def send_gain(self, dt=0):
+        address = self.address
+        port = self.port
+        url = "http://"+address+":"+port+"/set_gains"
+
+        params = {}
+        for key in self.gains_toset:
+            params[key] = self.gains_toset[key]
+        try:
+            resp = requests.get(url, params=params)
+            resp.close()
+        except Exception as e:
+            print(e)
+        self.gainsTimer = None
+        self.gains_toset = {}
 
     def changet0(self, date=None, time=None):
         if date is None:
@@ -346,6 +369,8 @@ class MainBox(RelativeLayout):
         # self.connect(self.address, self.port)
         # self.setup_bar.add_widget(self.step_ph, index=-2)
         # self.add_widget(self.start_box, index=1)
+
+        print(self.gains)
 
     # This is required for android to correctly display widgets on screen rotate
     def on_size(self, val1, val2):
