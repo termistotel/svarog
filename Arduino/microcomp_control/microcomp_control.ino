@@ -31,7 +31,7 @@ float ar_flow_setpoint = 0;
 float h2_flow_setpoint = 0;
 
 double main_gains[] = {1, 1, 1};
-double halc_gains[] = {50, 20, 250};
+double halc_gains[] = {50, 10, 10};
 
 double main_temp_output = 0;
 double halc_temp_output = 0;
@@ -131,6 +131,13 @@ void controlFurnace(char data[]){
     halc_gains[2] = atof(strtok(NULL, ","));
     main_temp_control.SetTunings(main_gains[0], main_gains[1], main_gains[2]);
     halc_temp_control.SetTunings(halc_gains[0], halc_gains[1], halc_gains[2]);
+//    for (int i = 0; i<3; i++){
+//      Serial.print(main_gains[i]);
+//      Serial.print(" ");
+//      Serial.print(halc_gains[i]); 
+//      Serial.print(" | ");
+//    }
+//    Serial.println("");
   }
 }
 

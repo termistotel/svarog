@@ -19,6 +19,7 @@ key_order = ["ar_flow", "h2_flow", "Temperature_sample", "Temperature_halcogenid
 class FurnaceServer(object):
     values = {"ar_flow": 0, "h2_flow": 0, "Temperature_sample": 1, "Temperature_halcogenide": 1}
     setpoints = {"ar_flow": 0, "h2_flow": 0, "Temperature_sample": 1, "Temperature_halcogenide": 1}
+    minvalues = {"ar_flow": 0, "h2_flow": 0, "Temperature_sample": 30, "Temperature_halcogenide": 30}
     temp_t = {"ar_flow": time.time(), "h2_flow": time.time(), "Temperature_sample": time.time(), "Temperature_halcogenide": time.time()}
     sample_gains = [1,1,1]
     halcogenide_gains = [50,75,250]
@@ -46,8 +47,8 @@ class FurnaceServer(object):
         self.ser.reset_input_buffer()
 
     def target_reached(self, key):
-        # Consider target reached if it is within tolerance
-        cryterion = (self.values[key] >= (1 - self.relative_tolerance)*self.setpoints[key]) and (self.values[key] <= (1 + self.relative_tolerance)*self.setpoints[key])
+        # Consider target reached if it is within tolerance of setpoint or minimal value (~room temperature)
+        cryterion = (self.values[key] >= (1 - self.relative_tolerance)*max(self.setpoints[key]), self.minvalues[key]) and (self.values[key] <= (1 + self.relative_tolerance)*max(self.setpoints[key]), self.minvalues[key])
         return cryterion
 
     def run_program(self, name = "TEST"):
