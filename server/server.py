@@ -21,12 +21,12 @@ class FurnaceServer(object):
     setpoints = {"ar_flow": 0, "h2_flow": 0, "Temperature_sample": 1, "Temperature_halcogenide": 1}
     temp_t = {"ar_flow": time.time(), "h2_flow": time.time(), "Temperature_sample": time.time(), "Temperature_halcogenide": time.time()}
     sample_gains = [1,1,1]
-    halcogenide_gains = [1,1,1]
+    halcogenide_gains = [50,75,250]
     maxTime = 30*60
     programs = []
     data_thread = None
     program_thread = None
-    relative_tolerance = 0.01
+    relative_tolerance = 0.1
     port = '/dev/ttyUSB0'
     baudrate = 115200
     ser = None
@@ -100,7 +100,7 @@ class FurnaceServer(object):
         self.ser.write(('get,' + '\r\n').encode())
         ret = self.ser.read_until().decode()
         sensor_values = re.findall('(.+?),', ret)
-        ar_flow, h2_flow, Temperature_sample, Temperature_halcogenide = sensor_values
+        ar_flow, h2_flow, Temperature_sample, Temperature_halcogenide = [float(x) for x in sensor_values]
 
         t2 = time.time()
         # time of meassured values is an average of before request and after recieval

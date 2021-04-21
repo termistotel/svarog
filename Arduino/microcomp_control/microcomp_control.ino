@@ -36,7 +36,7 @@ double halc_gains[] = {50, 20, 250};
 double main_temp_output = 0;
 double halc_temp_output = 0;
 
-char serbuff[20];
+char serbuff[40];
 int ibuff = 0;
 
 //Define temperature PID control
@@ -102,6 +102,7 @@ void loop() {
 void controlFurnace(char data[]){
   char * pch;
   char * category;
+//  Serial.println(data);
   pch = strtok(data, ",");
 
   if (strcmp(pch, "get") == 0) {
@@ -116,6 +117,10 @@ void controlFurnace(char data[]){
     h2_flow_setpoint = atof(strtok(NULL, ","));
     main_temp_setpoint = atof(strtok(NULL, ","));
     halc_temp_setpoint = atof(strtok(NULL, ","));
+//    Serial.print(ar_flow_setpoint); Serial.print(" ");
+//    Serial.print(h2_flow_setpoint); Serial.print(" ");
+//    Serial.print(main_temp_setpoint); Serial.print(" ");
+//    Serial.print(halc_temp_setpoint); Serial.println(" ");
 
   } else if (strcmp(pch, "gains") == 0) {
     main_gains[0] = atof(strtok(NULL, ","));
