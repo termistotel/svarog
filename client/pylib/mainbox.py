@@ -24,11 +24,11 @@ for key in key_order:
 class MainBox(RelativeLayout):
     graph_data = init_data.copy()
     getps = NumericProperty(1.0)
-    max_step_num = 5
+    max_step_num = 10
     min_step_num = 0
     main_pad_y = NumericProperty(0.1)
     main_pad_x = NumericProperty(0.06)
-    step_config_size_hint_y = 0.99/max_step_num
+    step_config_size_hint_y = 0.2
     setpointTimer = None
     gainsTimer = None
     setpoints = {"ar_flow": 0, "h2_flow": 0, "Temperature_sample": 0, "Temperature_halcogenide": 0}
@@ -47,17 +47,18 @@ class MainBox(RelativeLayout):
         self.change_choices(new_step_num)
 
     def change_choices(self, n):
-        choice_bar = self.choice_bar
+        step_bar = self.step_bar
+        content_bar = self
         for widget in self.steps:
-            if widget in choice_bar.children:
-                choice_bar.remove_widget(widget)
-            if widget.lockChild in self.children:
-                self.remove_widget(widget.lockChild)
+            if widget in step_bar.children:
+                step_bar.remove_widget(widget)
+            if widget.lockChild in content_bar.children:
+                content_bar.remove_widget(widget.lockChild)
 
         for i, widget in zip(range(n), self.steps):
-            self.add_widget(widget.lockChild)
-            choice_bar.add_widget(widget)
-        choice_bar.add_widget(Label(size_hint_y=1-self.step_config_size_hint_y*n))
+            content_bar.add_widget(widget.lockChild, index=0)
+            step_bar.add_widget(widget)
+        # step_bar.add_widget(Label(size_hint_y=1-self.step_config_size_hint_y*n))
 
     def drop_data(self):
         self.graph_data= init_data.copy()
@@ -189,11 +190,13 @@ class MainBox(RelativeLayout):
             self.setup_bar.remove_widget(self.step_ph)
             self.manual_button.state="normal"
 
-            self.start_box.add_widget(self.choice_bar)
+            # self.start_box.add_widget(self.choice_bar)
+            self.start_box.add_widget(self.content_bar)
             self.setup_bar.add_widget(self.step_box, index=-2)
 
         else:
-            self.start_box.remove_widget(self.choice_bar)
+            # self.start_box.remove_widget(self.choice_bar)
+            self.start_box.remove_widget(self.content_bar)
             self.setup_bar.remove_widget(self.step_box)
             for widget in self.steps:
                 widget.state = "normal"
@@ -317,6 +320,10 @@ class MainBox(RelativeLayout):
 
     def __init__(self, **kwargs):
         super(MainBox, self).__init__(**kwargs)
+        self.initialize_mainbox(0)
+        # Clock.schedule_once(self.initialize_mainbox, 10)
+
+    def initialize_mainbox(self, dt):
         self.t0 = datetime.datetime.now()
         self.t0 = self.t0.replace(microsecond=0)
         self.current_t = self.t0
@@ -325,26 +332,27 @@ class MainBox(RelativeLayout):
         # self.browseButtonFunction = partial(self.browserReturnFunction, ("/home/alion/Desktop/cat.jpg",0), 0)
         # self.applyButtonFunction = partial(self.browserReturnFunction, ("/home/alion/Desktop/black_cat.jpg",0), 0)
 
-        reserved_x = self.ids.choice_bar.size_hint_x
-        reserved_y = self.ids.setup_bar.size_hint_y
         self.display_box = self.ids.display_box
+        self.start_box = self.ids.start_box
+        self.choice_bar = self.ids.choice_bar
+        self.step_bar = self.ids.step_bar
+        self.content_bar = self.ids.content_bar
 
         # Main Widgets
-        self.control=Control()
+        # self.control=Control()
+        self.control=self.ids.control
         # self.browser=FileBrowser(main=self)
         # self.kernelEditor=KernelEditor(main=self)
 
         # Step configs
-        self.steps = [StepProgButton(self, pos_hint={"y": self.step_config_size_hint_y*(self.max_step_num-(i+1))}, size_hint_y=self.step_config_size_hint_y) for i in range(self.max_step_num)]
+        self.steps = [StepProgButton(self, number = i, size_hint_y=None, size=(0, 0)) for i in range(self.max_step_num)]
 
         # Step_increments
         self.ids.step_num_inc.on_press=partial(self.change_step_num, 1)
         self.ids.step_num_dec.on_press=partial(self.change_step_num, -1)
 
-        self.display_box.add_widget(self.control)
+        # self.display_box.add_widget(self.control)
 
-        self.start_box = self.ids.start_box
-        self.choice_bar = self.ids.choice_bar
         self.manual_bar = self.ids.manual_bar
         self.manual_button = ManualProgButton(self)
         self.manual_bar.add_widget(self.manual_button)
@@ -354,7 +362,8 @@ class MainBox(RelativeLayout):
         self.step_box = self.ids.step_box
         self.step_ph = self.ids.step_ph
 
-        self.start_box.remove_widget(self.choice_bar)
+        # self.start_box.remove_widget(self.choice_bar)
+        self.start_box.remove_widget(self.content_bar)
         self.setup_bar.remove_widget(self.step_box)
 
         # save references to graphs
@@ -374,13 +383,19 @@ class MainBox(RelativeLayout):
 
     # This is required for android to correctly display widgets on screen rotate
     def on_size(self, val1, val2):
+        for step_button in self.steps:
+            step_button.size = (0, self.step_config_size_hint_y*self.height)
         Clock.schedule_once(lambda dt: self.canvas.ask_update(), 0.2)
 
 class Control(GridLayout):
     """docstring for Control"""
-    def __init__(self, **kwargs):
-        super(Control, self).__init__(**kwargs)     
+    def __init__(self, *args, **kwargs):
+        super(Control, self).__init__(*args, **kwargs)
 
+        print('yap',self.ids)
+        Clock.schedule_once(self.initialize_plots, 1)
+
+    def initialize_plots(self, dt):
         flow_color = [1, 0, 0, 1]
         temp_color = [0, 1, 0, 1]
         setpoint_color = [0.5, 0.5, 1, 1]
@@ -410,6 +425,7 @@ class Control(GridLayout):
         self.halc_temp_setpoint_plot = HBar(color=setpoint_color)
         self.ids.halc_temp.add_plot(self.halc_temp_plot)
         self.ids.halc_temp.add_plot(self.halc_temp_setpoint_plot)
+
 
 class ControlBox(BoxLayout):
     """docstring for ControlBox"""

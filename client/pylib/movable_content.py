@@ -5,8 +5,12 @@ from kivy.properties import NumericProperty
 
 from kivy.animation import Animation
 
-class StepProgButton(ToggleButton):
-	def __init__(self, main, contentLength=0.7, **kwargs):
+class StepProgButton(ToggleButton, ):
+	number = NumericProperty(0)
+
+	def __init__(self, main, contentLength=0.7, number=0, **kwargs):
+		self.main = main
+		self.number = number
 		self.contentLength = contentLength
 		self.lockChild = StepMoveableContent(main, self)
 		super(StepProgButton, self).__init__(**kwargs)
@@ -14,6 +18,7 @@ class StepProgButton(ToggleButton):
 	def on_state(self, val1, state):
 		if state=="normal":
 			Animation(x = self.lockChild.lowVal, duration=0.4, t='out_cubic').start(self.lockChild)
+			print(self.y)
 		else:
 			Animation(x = self.lockChild.highVal, duration=0.4, t='out_cubic').start(self.lockChild)
 
@@ -22,6 +27,7 @@ class StepMoveableContent(BoxLayout):
 	highVal = NumericProperty(0)
 
 	def __init__(self, main, lockParent, **kwargs):
+		self.main = main
 		self.lockParent = lockParent
 		super(StepMoveableContent, self).__init__(**kwargs)
 

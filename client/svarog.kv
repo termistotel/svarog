@@ -1,25 +1,12 @@
 <MainBox>:
     main_pad_y: 0.05
     main_pad_x: 0.05
-    BoxLayout:
+    RelativeLayout:
         orientation: 'horizontal'
         BoxLayout:
-            id: start_box
-            choice_bar: choice_bar.__self__
-            manual_bar: manual_bar.__self__
-            size_hint_x: root.main_pad_x
             orientation: 'vertical'
-            Label:
-                size_hint_y: root.main_pad_y
-                text: "Svarog"
-            RelativeLayout:
-                id: choice_bar
-                orientation: 'vertical'
-            RelativeLayout:
-                id: manual_bar
-                orientation: 'vertical'
-        BoxLayout:
-            orientation: 'vertical'
+            size_hint_x: 1-root.main_pad_x
+            pos_hint: {'x': root.main_pad_x, 'y': 0}
             BoxLayout:
                 id: setup_bar
                 size_hint_y: root.main_pad_y
@@ -150,6 +137,8 @@
 
             BoxLayout:
                 id: display_box
+                Control:
+                    id: control
 
             BoxLayout:
                 id: address
@@ -186,6 +175,33 @@
                 ToggleButton:
                     group: "displays"
                     size_hint_x: 0.1
+        BoxLayout:
+            id: start_box
+            choice_bar: choice_bar.__self__
+            content_bar: content_bar.__self__
+            manual_bar: manual_bar.__self__
+            size_hint_x: root.main_pad_x
+            pos_hint: {'x': 0, 'y': 0}
+            orientation: 'vertical'
+            Label:
+                size_hint_y: root.main_pad_y
+                text: "Svarog"
+            RelativeLayout:
+                id: content_bar
+                size_hint_y: 1-root.main_pad_y
+                ScrollView:
+                    size_hint_y: 1
+                    do_scroll_x: False
+                    do_scroll_y: True
+                    id: choice_bar
+                    FloatLayout:
+                        id: step_bar
+                        size_hint_y: None
+                        height: sum([child.height for child in self.children])
+            RelativeLayout:
+                size_hint_y: 1 -root.main_pad_y
+                id: manual_bar
+                orientation: 'vertical'
 
 <Control>:
     cols: 2
@@ -217,7 +233,7 @@
         ymin: 0
         ymax: 300
         xlabel: 't [min]'
-        ylabel: 'T [C]'
+        ylabel: 'Tp [C]'
         x_ticks_major: 0.5
         x_grid: True
         x_grid_label: True
@@ -251,13 +267,17 @@
         ymin: 0
         ymax: 200
         xlabel: 't [min]'
-        ylabel: 'Th [C]'
+        ylabel: 'Ts [C]'
         x_ticks_major: 0.5
         x_grid: True
         x_grid_label: True
         y_ticks_major: 50
         y_grid_label: True
         padding: 5
+
+<StepProgButton>:
+    y: self.main.ids.step_bar.height - (self.number+1)*self.height
+    text: str(self.number + 1)
 
 <StepMoveableContent>:
     canvas:
@@ -277,7 +297,8 @@
     padding: 5
     orientation: 'horizontal'
 
-    y: self.lockParent.y
+    y: (self.main.choice_bar.y + self.main.choice_bar.height) - (self.lockParent.number + 1)*self.lockParent.height + (self.main.choice_bar.scroll_y-1)*(self.main.choice_bar.height-self.main.step_bar.height)
+    on_y: print(self.main.choice_bar.scroll_y)
 
     lowVal: self.lockParent.x - self.width
     highVal: self.lockParent.x + self.lockParent.width
@@ -321,7 +342,7 @@
             value: 25
             min_val: 1
             max_val: 1200
-            name: "Sample [C]"
+            name: "Primary [C]"
             perc_inc: 1
             precision: 0
             typ: "linear_round"
@@ -330,7 +351,7 @@
             value: 25
             min_val: 1
             max_val: 200
-            name: "Prec [C]"
+            name: "Secondary [C]"
             precision: 0
             perc_inc: 1
             typ: "linear_round"
@@ -395,7 +416,7 @@
             value: 25
             min_val: 1
             max_val: 1200
-            name: "Sample [C]"
+            name: "Primary [C]"
             perc_inc: 1
             precision: 0
             typ: "linear_round"
@@ -419,7 +440,7 @@
             value: 25
             min_val: 1
             max_val: 200
-            name: "Halc [C]"
+            name: "Secondary [C]"
             precision: 0
             perc_inc: 1
             typ: "linear_round"
