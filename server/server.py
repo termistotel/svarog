@@ -16,10 +16,15 @@ import json, re
 
 key_order = ["ar_flow", "h2_flow", "Temperature_sample", "Temperature_halcogenide", "time"]
 
+def linear(x, x1, y1, x2, y2):
+    k = (y2 - y1)/(x2 - x1)
+    y = y1 + k*(x - x1)
+    return y
+
 class FurnaceServer(object):
     values = {"ar_flow": 0, "h2_flow": 0, "Temperature_sample": 1, "Temperature_halcogenide": 1}
     setpoints = {"ar_flow": 0, "h2_flow": 0, "Temperature_sample": 1, "Temperature_halcogenide": 1}
-    minvalues = {"ar_flow": 0, "h2_flow": 0, "Temperature_sample": 30, "Temperature_halcogenide": 30}
+    minvalues = {"ar_flow": lambda: 0, "h2_flow": lambda: 0, "Temperature_sample": lambda: 75, "Temperature_halcogenide": lambda: 75}
     temp_t = {"ar_flow": time.time(), "h2_flow": time.time(), "Temperature_sample": time.time(), "Temperature_halcogenide": time.time()}
     sample_gains = [1,1,1]
     halcogenide_gains = [50,75,250]
@@ -35,6 +40,9 @@ class FurnaceServer(object):
     def __init__(self, dbName = "example.db"):
         self.dbName = dbName
 
+        # Compensation for primary furnace heating up the secondary furnace
+        self.minvalues['Temperature_halcogenide'] = lambda: linear(self.minvalues['Temperature_sample'](), 25, 25, 800, 80)
+
         # Start connection to arduino and clear input
         self.ser = serial.Serial(port=self.port, baudrate=self.baudrate, timeout=1)
         time.sleep(5)
@@ -47,8 +55,11 @@ class FurnaceServer(object):
         self.ser.reset_input_buffer()
 
     def target_reached(self, key):
-        # Consider target reached if it is within tolerance of setpoint or minimal value (~room temperature)
-        cryterion = (self.values[key] >= (1 - self.relative_tolerance)*max(self.setpoints[key]), self.minvalues[key]) and (self.values[key] <= (1 + self.relative_tolerance)*max(self.setpoints[key]), self.minvalues[key])
+        # Consider target reached if it is within tolerance of setpoint or less than minimal value (~room temperature)
+        if self.setpoints[key] < self.minvalues[key]():
+            cryterion = (self.values[key] <= self.minvalues[key]())
+        else:
+            cryterion = (self.values[key] >= (1 - self.relative_tolerance)*self.setpoints[key]) and (self.values[key] <= (1 + self.relative_tolerance)*self.setpoints[key])
         return cryterion
 
     def run_program(self, name = "TEST"):
