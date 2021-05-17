@@ -4,7 +4,8 @@
 *__pycache__/*
 *thrash/*
 *windows_build/*
-*.buildozer/*
-*bin/*
-*build/*
-*dist/*
+*.spec*
+client/.buildozer/*
+client/bin/*
+client/build/*
+client/dist/*

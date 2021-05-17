@@ -79,6 +79,7 @@ void loop() {
     // basic readout test, just print the current temp
     main_temp = main_read.readCelsius();
     halc_temp = halc_read.readCelsius();
+//    Serial.print(ar_flow); SejjjjjjSerial.println(",");
     t0 = millis();
 
     main_temp_control.Compute();
@@ -89,8 +90,8 @@ void loop() {
     dac.begin(addrs[1]);
     dac.setVoltage(4095*(h2_flow_setpoint/20.52), false);
 
-    analogWrite(A3,halc_temp_output);
-    analogWrite(A4,main_temp_output);
+    analogWrite(A1,halc_temp_output);
+    analogWrite(A2,main_temp_output);
 
     // PLACEHOLDER:
     // This should be replaced by actual reading of flow
