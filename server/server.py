@@ -16,9 +16,9 @@ import json, re
 
 key_order = ["ar_flow", "h2_flow", "Temperature_sample", "Temperature_halcogenide", "time"]
 
-def linear(x, x1, y1, x2, y2):
+def linear(fx, x1, y1, x2, y2):
     k = (y2 - y1)/(x2 - x1)
-    y = y1 + k*(x - x1)
+    y = y1 + k*(fx() - x1)
     return y
 
 class FurnaceServer(object):
@@ -41,7 +41,7 @@ class FurnaceServer(object):
         self.dbName = dbName
 
         # Compensation for primary furnace heating up the secondary furnace
-        self.minvalues['Temperature_halcogenide'] = lambda: linear(self.minvalues['Temperature_sample'](), 25, 25, 800, 80)
+        self.minvalues['Temperature_halcogenide'] = lambda: linear(lambda: self.values["Temperature_sample"], 25, 25, 800, 90)
 
         # Start connection to arduino and clear input
         self.ser = serial.Serial(port=self.port, baudrate=self.baudrate, timeout=1)
