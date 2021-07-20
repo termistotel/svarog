@@ -13,6 +13,7 @@ import cherrypy
 import mimetypes
 
 import json, re
+from libs.temp_control import TempController
 
 key_order = ["ar_flow", "h2_flow", "Temperature_sample", "Temperature_halcogenide", "time"]
 
@@ -36,6 +37,10 @@ class FurnaceServer(object):
     port = '/dev/ttyUSB0'
     baudrate = 115200
     ser = None
+    direct_power_values = {'main': 0.0, 'seco': 0.0}
+
+    # This should be read in the future
+    Tenv = 25
 
     def __init__(self, dbName = "example.db"):
         self.dbName = dbName
@@ -47,6 +52,9 @@ class FurnaceServer(object):
         self.ser = serial.Serial(port=self.port, baudrate=self.baudrate, timeout=1)
         time.sleep(5)
         self.clear_serial_input()
+
+        # Create temperature control wrapper
+        self.tc = TempController()
 
         # Start data collection from arduino
         self.data_thread = _thread.start_new_thread(self.data_collection, ())
@@ -107,6 +115,7 @@ class FurnaceServer(object):
 
     def get_data(self):
         t1 = time.time()
+
         # Request data from arduino and read it
         self.clear_serial_input()
         self.ser.write(('get,' + '\r\n').encode())
@@ -115,6 +124,7 @@ class FurnaceServer(object):
         ar_flow, h2_flow, Temperature_sample, Temperature_halcogenide = [float(x) for x in sensor_values]
 
         t2 = time.time()
+
         # time of meassured values is an average of before request and after recieval
         t = np.mean([t1, t2])
 
@@ -129,8 +139,15 @@ class FurnaceServer(object):
         return ret
 
     def send_setpoints(self):
-        setpoints_strs = [str(self.setpoints[key]) + ',' for key in ['ar_flow', 'h2_flow', 'Temperature_sample', 'Temperature_halcogenide']]
+        setpoints_strs = ["%.2".format(self.setpoints[key]) + ',' for key in ['ar_flow', 'h2_flow', 'Temperature_sample', 'Temperature_halcogenide']]
         total_command = 'set,' + ''.join(setpoints_strs) + '\r\n'
+        self.ser.write((total_command).encode())
+        return total_command
+
+    def send_direct(self):
+        setpoints_strs = ["%.2".format(self.setpoints[key]) + ',' for key in ['ar_flow', 'h2_flow']]
+        setpoints_strs +=["%.2".format(self.direct_power_values[key]) +',' for key in ['main', 'seco']]
+        total_command = 'set_direct,' + ''.join(setpoints_strs) + '\r\n'
         self.ser.write((total_command).encode())
         return total_command
 
@@ -142,6 +159,8 @@ class FurnaceServer(object):
 
     def data_collection(self, buffer_num = 4):
         self.t0 = time.time()
+        last_runs = {'main': self.t0, 'seco': self.t0}
+        last_update = {'main': self.t0, 'seco': self.t0}
         database = sqlite3.connect(self.dbName)
         db_write_cursor = database.cursor()
         N = 0
@@ -149,6 +168,35 @@ class FurnaceServer(object):
         while True:
             ret = self.get_data()
             dbvals.append([ret[key] for key in key_order])
+
+            # Main temp update
+            if ret['time'] - last_update['main'] > self.tc.main_dt:
+                # hard_fix = self.tc.main_dt//0.1
+                easy_fix = 10
+                self.tc.update_temp_main([np.mean([dbvals[-easy_fix:]])])
+                last_update['main'] = time.time()
+
+            # Main furnace control
+            if (ret['time'] - last_runs['main']) > self.tc.main_Dt:
+                # Agregated last n seconds
+                self.direct_power_values['main'] = self.tc.fp_main(self.setpoints['Temperature_sample'], self.Tenv)[0][0]
+                print("MAIN", self.direct_power_values['main'])
+                last_runs['main'] = time.time()
+
+            # Seco temp update
+            if ret['time'] - last_update['seco'] > self.tc.seco_dt:
+                easy_fix = 10
+                self.tc.update_temp_seco([np.mean([dbvals[-10:]])])
+                last_update['seco'] = time.time()
+
+            # Seco furnace control
+            if (ret['time'] - last_runs['seco']) > self.tc.seco_Dt:
+                # Agregated last n seconds
+                self.direct_power_values['seco'] = self.tc.fp_seco(self.setpoints['Temperature_halcogenide'], self.Tenv)[0][0]
+                print("SECO", self.direct_power_values['seco'], self.setpoints['Temperature_halcogenide'])
+                last_runs['seco'] = time.time()
+
+            self.send_direct()
             time.sleep(0.1)
 
             N += 1
