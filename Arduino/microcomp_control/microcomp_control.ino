@@ -30,14 +30,30 @@ double halc_temp_setpoint =   0;
 float ar_flow_setpoint = 0;
 float h2_flow_setpoint = 0;
 
-double main_gains[] = {1, 1, 1};
+double main_gains[] = {50, 100, 50};
 double halc_gains[] = {50, 10, 10};
 
 double main_temp_output = 0;
 double halc_temp_output = 0;
 
+const int main_pin =  5;
+int main_state = HIGH;
+const int halc_pin =  6;
+int halc_state = HIGH;
+
+const int main_pwmPeriod = 2000;
+const int halc_pwmPeriod = 2000;
+
+float main_pwmDuty = 0.5;
+float halc_pwmDuty = 0.5;
+
+unsigned long main_t0 = 0;
+unsigned long halc_t0 = 0;
+
 char serbuff[40];
 int ibuff = 0;
+
+bool internal_PID_control = false;
 
 //Define temperature PID control
 PID main_temp_control(&main_temp, &main_temp_output, &main_temp_setpoint, main_gains[0], main_gains[1], main_gains[2], DIRECT);
@@ -65,11 +81,15 @@ void setup() {
   // wait for MAX chip to stabilize
   delay(1000);
   t0 = millis();
+  main_t0 = t0;
+  halc_t0 = t0;
  
   //turn the PID on
   main_temp_control.SetMode(AUTOMATIC);
   halc_temp_control.SetMode(AUTOMATIC);
 
+  pinMode(main_pin, OUTPUT);
+  pinMode(halc_pin, OUTPUT);
 //  Serial.println("STARTING");
 }
 
@@ -82,21 +102,69 @@ void loop() {
 //    Serial.print(ar_flow); SejjjjjjSerial.println(",");
     t0 = millis();
 
-    main_temp_control.Compute();
-    halc_temp_control.Compute();
+//    main_temp_control.Compute();
+//    halc_temp_control.Compute();
+    if (internal_PID_control){
+      main_temp_control.Compute();
+      halc_temp_control.Compute();
+    }
 
     dac.begin(addrs[0]);
     dac.setVoltage(4095*(ar_flow_setpoint/204.13), false);
     dac.begin(addrs[1]);
     dac.setVoltage(4095*(h2_flow_setpoint/20.52), false);
 
-    analogWrite(A1,halc_temp_output);
-    analogWrite(A2,main_temp_output);
+//    analogWrite(A3,halc_temp_output);
+//    analogWrite(A4,main_temp_output);
+
+    main_pwmDuty = main_temp_output;
+    halc_pwmDuty = halc_temp_output;
 
     // PLACEHOLDER:
     // This should be replaced by actual reading of flow
     ar_flow = ar_flow_setpoint;
     h2_flow = h2_flow_setpoint;
+  }
+
+  //PWM STATE MAIN
+  if (main_state == LOW) {
+    if ((t - main_t0) >= (main_pwmPeriod*(1-main_pwmDuty))) {
+      main_state = HIGH;
+      if (main_pwmDuty > 0.1) {
+        digitalWrite(main_pin, main_state);
+      }
+      main_t0 = millis();
+    }
+  } 
+  if ((main_state == HIGH)) {
+    if ((t - main_t0) > (main_pwmPeriod*(main_pwmDuty))) {
+      main_state = LOW;
+      if (main_pwmDuty < 0.9) {
+        digitalWrite(main_pin, main_state);
+      }
+      main_t0 = millis();
+    }
+  }
+
+  //PWM STATE SECONDARY
+//  Serial.println(halc_pwmDuty);
+  if (halc_state == LOW) {
+    if ((t - halc_t0) >= (halc_pwmPeriod*(1-halc_pwmDuty))) {
+      halc_state = HIGH;
+      if (halc_pwmDuty > 0.1) {
+        digitalWrite(halc_pin, halc_state);
+      }
+      halc_t0 = millis();
+    }
+  }
+  if (halc_state == HIGH) {
+    if ((t - halc_t0) >= (halc_pwmPeriod*(halc_pwmDuty))) {
+      halc_state = LOW;
+      if (halc_pwmDuty < 0.9) {
+        digitalWrite(halc_pin, halc_state);
+      }
+      halc_t0 = millis();
+    }
   }
 }
 
@@ -122,6 +190,17 @@ void controlFurnace(char data[]){
 //    Serial.print(h2_flow_setpoint); Serial.print(" ");
 //    Serial.print(main_temp_setpoint); Serial.print(" ");
 //    Serial.print(halc_temp_setpoint); Serial.println(" ");
+
+  } else if (strcmp(pch, "set_direct") == 0) {
+    //set_direct,3.5,5.5,125,255     ###furnace power is 0-255
+    ar_flow_setpoint = atof(strtok(NULL, ","));
+    h2_flow_setpoint = atof(strtok(NULL, ","));
+    main_temp_output = atof(strtok(NULL, ","));
+    halc_temp_output = atof(strtok(NULL, ","));
+//    Serial.print(halc_temp_output); Serial.println(" ");
+//    Serial.print(main_temp_output); Serial.println(" ");
+//    Serial.print((int) halc_temp_output); Serial.println(" ");
+//    Serial.print((int) main_temp_output); Serial.println(" ");
 
   } else if (strcmp(pch, "gains") == 0) {
     main_gains[0] = atof(strtok(NULL, ","));
