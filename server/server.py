@@ -139,14 +139,14 @@ class FurnaceServer(object):
         return ret
 
     def send_setpoints(self):
-        setpoints_strs = ["%.2".format(self.setpoints[key]) + ',' for key in ['ar_flow', 'h2_flow', 'Temperature_sample', 'Temperature_halcogenide']]
+        setpoints_strs = ["{:.2f}".format(self.setpoints[key]) + ',' for key in ['ar_flow', 'h2_flow', 'Temperature_sample', 'Temperature_halcogenide']]
         total_command = 'set,' + ''.join(setpoints_strs) + '\r\n'
         self.ser.write((total_command).encode())
         return total_command
 
     def send_direct(self):
-        setpoints_strs = ["%.2".format(self.setpoints[key]) + ',' for key in ['ar_flow', 'h2_flow']]
-        setpoints_strs +=["%.2".format(self.direct_power_values[key]) +',' for key in ['main', 'seco']]
+        setpoints_strs = ["{:.2f}".format(self.setpoints[key]) + ',' for key in ['ar_flow', 'h2_flow']]
+        setpoints_strs +=["{:.2f}".format(self.direct_power_values[key]) +',' for key in ['main', 'seco']]
         total_command = 'set_direct,' + ''.join(setpoints_strs) + '\r\n'
         self.ser.write((total_command).encode())
         return total_command
@@ -173,30 +173,30 @@ class FurnaceServer(object):
             if ret['time'] - last_update['main'] > self.tc.main_dt:
                 # hard_fix = self.tc.main_dt//0.1
                 easy_fix = 10
-                self.tc.update_temp_main([np.mean([dbvals[-easy_fix:]])])
+                #  Take mean of main temperatures #dbvals[i][2] for i = max-easy_fix, max (about last second)#
+                self.tc.update_temp_main([np.mean([val[2] for val in dbvals[-easy_fix:]])])
                 last_update['main'] = time.time()
 
             # Main furnace control
             if (ret['time'] - last_runs['main']) > self.tc.main_Dt:
                 # Agregated last n seconds
                 self.direct_power_values['main'] = self.tc.fp_main(self.setpoints['Temperature_sample'], self.Tenv)[0][0]
-                print("MAIN", self.direct_power_values['main'])
                 last_runs['main'] = time.time()
 
             # Seco temp update
             if ret['time'] - last_update['seco'] > self.tc.seco_dt:
                 easy_fix = 10
-                self.tc.update_temp_seco([np.mean([dbvals[-10:]])])
+                self.tc.update_temp_seco([np.mean([val[3] for val in dbvals[-easy_fix:]])])
                 last_update['seco'] = time.time()
 
             # Seco furnace control
             if (ret['time'] - last_runs['seco']) > self.tc.seco_Dt:
                 # Agregated last n seconds
                 self.direct_power_values['seco'] = self.tc.fp_seco(self.setpoints['Temperature_halcogenide'], self.Tenv)[0][0]
-                print("SECO", self.direct_power_values['seco'], self.setpoints['Temperature_halcogenide'])
                 last_runs['seco'] = time.time()
 
-            self.send_direct()
+            print(self.direct_power_values)
+            print(self.send_direct())
             time.sleep(0.1)
 
             N += 1
