@@ -120,6 +120,7 @@ class FurnaceServer(object):
         self.clear_serial_input()
         self.ser.write(('get,' + '\r\n').encode())
         ret = self.ser.read_until().decode()
+        # print("RET", ret)
         sensor_values = re.findall('(.+?),', ret)
         ar_flow, h2_flow, Temperature_sample, Temperature_halcogenide = [float(x) for x in sensor_values]
 
@@ -136,6 +137,10 @@ class FurnaceServer(object):
             "Temperature_sample": Temperature_sample,
             "Temperature_halcogenide": Temperature_halcogenide}
         self.values = ret
+        for key in ret:
+            if np.isnan(ret[key]):
+                print(key, "is", ret[key])
+                ret[key] = 25
         return ret
 
     def send_setpoints(self):
@@ -165,14 +170,14 @@ class FurnaceServer(object):
         db_write_cursor = database.cursor()
         N = 0
         dbvals = []
+        easy_fix = 4
+        # hard_fix = self.tc.main_dt//0.1
         while True:
             ret = self.get_data()
             dbvals.append([ret[key] for key in key_order])
 
             # Main temp update
             if ret['time'] - last_update['main'] > self.tc.main_dt:
-                # hard_fix = self.tc.main_dt//0.1
-                easy_fix = 10
                 #  Take mean of main temperatures #dbvals[i][2] for i = max-easy_fix, max (about last second)#
                 self.tc.update_temp_main([np.mean([val[2] for val in dbvals[-easy_fix:]])])
                 last_update['main'] = time.time()
@@ -185,19 +190,20 @@ class FurnaceServer(object):
 
             # Seco temp update
             if ret['time'] - last_update['seco'] > self.tc.seco_dt:
-                easy_fix = 10
+                # print("SECO_update")
                 self.tc.update_temp_seco([np.mean([val[3] for val in dbvals[-easy_fix:]])])
                 last_update['seco'] = time.time()
 
             # Seco furnace control
             if (ret['time'] - last_runs['seco']) > self.tc.seco_Dt:
+                # print("SECO_control")
                 # Agregated last n seconds
                 self.direct_power_values['seco'] = self.tc.fp_seco(self.setpoints['Temperature_halcogenide'], self.Tenv)[0][0]
                 last_runs['seco'] = time.time()
 
             print(self.direct_power_values)
-            print(self.send_direct())
-            time.sleep(0.1)
+            self.send_direct()
+            time.sleep(0.25)
 
             N += 1
 
