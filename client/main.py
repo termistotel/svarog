@@ -3,6 +3,8 @@ kivy.require('2.0.0') # replace with your current kivy version !
 from kivy.app import App
 from kivy.config import Config
 
+from pylib.control_widgets import Values_control_layout, ControlBox, RTdisp
+
 class SvarogApp(App):
     def build(self):
         mainbox = MainBox()

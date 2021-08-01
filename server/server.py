@@ -38,6 +38,8 @@ class FurnaceServer(object):
     baudrate = 115200
     ser = None
     direct_power_values = {'main': 0.0, 'seco': 0.0}
+    program_current_wait = 0
+    program_current_wait_status = "None"
 
     # This should be read in the future
     Tenv = 25
@@ -46,7 +48,7 @@ class FurnaceServer(object):
         self.dbName = dbName
 
         # Compensation for primary furnace heating up the secondary furnace
-        self.minvalues['Temperature_halcogenide'] = lambda: linear(lambda: self.values["Temperature_sample"], 25, 25, 800, 90)
+        self.minvalues['Temperature_halcogenide'] = lambda: linear(lambda: self.values["Temperature_sample"], 35, 35, 800, 90)
 
         # Start connection to arduino and clear input
         self.ser = serial.Serial(port=self.port, baudrate=self.baudrate, timeout=1)
@@ -81,22 +83,34 @@ class FurnaceServer(object):
             self.set_setpoints(ar_flow=plan["ar_flow"], h2_flow=plan["h2_flow"],
                 Temperature_sample=plan["Temperature_sample"], Temperature_halcogenide=plan["Temperature_halcogenide"])
 
+            self.program_current_wait = float(plan["time"])*60
             # Wait until set values are reached
             print("waiting for setpoint")
-            while True:
+            self.program_current_wait_status = "Wait"
+            while self.program_run:
                 break_flag = True
                 for key in self.setpoints:
                     # print(key, self.target_reached(key))
                     break_flag = break_flag and (self.target_reached(key))
                 if break_flag:
                     break
-                time.sleep(0.5)
+                time.sleep(0.25)
             print("setpoint done")
 
             # Wait for planned time
-            print(float(plan["time"]))
-            time.sleep(float(plan["time"])*60)
+            previous_time = datetime.datetime.now().timestamp()
+            while (self.program_current_wait > 0) and self.program_run:
+                time.sleep(0.25)
+                current_time = datetime.datetime.now().timestamp()
+                delta_time = current_time - previous_time
+                previous_time = current_time
+                self.program_current_wait -= delta_time  
+                self.program_current_wait_status = "{:02d}:{:02d}".format(int(self.program_current_wait)//60, int(self.program_current_wait)%60)
 
+            self.program_current_wait = 0
+            self.program_current_wait_status = "None"
+
+            # remove current step from the list
             self.programs = self.programs[1:]
             return run_step()
 
@@ -120,7 +134,6 @@ class FurnaceServer(object):
         self.clear_serial_input()
         self.ser.write(('get,' + '\r\n').encode())
         ret = self.ser.read_until().decode()
-        # print("RET", ret)
         sensor_values = re.findall('(.+?),', ret)
         ar_flow, h2_flow, Temperature_sample, Temperature_halcogenide = [float(x) for x in sensor_values]
 
@@ -237,6 +250,8 @@ class FurnaceServer(object):
         ret["data"] = data
         ret["maxTime"] = self.maxTime
         ret["setpoints"] = self.setpoints
+        # ret["Program_time_remaining"] = "{:02d}:{:02d}".format(int(self.program_current_wait)//60, int(self.program_current_wait)%60)
+        ret["Program_time_remaining"] = self.program_current_wait_status
 
         return json.dumps(ret)
 
@@ -281,14 +296,20 @@ class FurnaceServer(object):
     @cherrypy.expose
     def start_program(self, state = "start", name="TEST"):
         print(name)
-        if self.program_thread is None:
-            self.program_thread = _thread.start_new_thread(self.run_program, (name,))
-            return "DONE"
-        else:
-            return "ALREADY RUNNING"
+        if state == "start":
+            if self.program_thread is None:
+                self.program_run = True
+                self.program_thread = _thread.start_new_thread(self.run_program, (name,))
+                return "DONE"
+            else:
+                return "ALREADY RUNNING"
+        elif state == "stop":
+            self.program_run = False
+            self.program_thread = None
+            self.program_current_wait_status = "None"
+
 
 if __name__ == '__main__':
-
     dbName = "furnaceActivity.db"
 
     conf = {

@@ -22,92 +22,67 @@
                 BoxLayout:
                     id: step_box
                     orientation: 'horizontal'
-                    size_hint_x: 0.3
+                    size_hint_x: 0.25
+                    Label:
+                        size_hint_x: 0.05
                     Button:
                         id: step_num_dec
-                        size_hint_x: 0.1
+                        size_hint_x: 0.066
                         text: "<"
                     TextInput:
                         id: step_num
-                        size_hint_x: 0.1
+                        size_hint_x: 0.066
                         input_filter: 'int'
                         text: "0"
                         write_tab: False
                         is_focusable: True
-
                     Button:
                         id: step_num_inc
-                        size_hint_x: 0.1
+                        size_hint_x: 0.066
                         text: ">"
+
                 Label:
                     id: step_ph
-                    size_hint_x: 0.3
+                    size_hint_x: step_box.size_hint_x
+
                 Label:
                     size_hint_x: 0.2
-                BoxLayout:
-                    size_hint_x: 0.2
-                    Label:
-                        text: "main"
-                    TextInput:
-                        id: p_main
-                        input_filter: 'float'
-                        text: "1"
-                        multiline: False
-                        write_tab: False
-                        is_focusable: True
-                        on_focus: if not self.focus: root.set_gains({"p_main": self.text})
-                        on_focus: if self.focus: self.select_all()
-                    TextInput:
-                        id: i_main
-                        input_filter: 'float'
-                        text: "1"
-                        multiline: False
-                        write_tab: False
-                        is_focusable: True
-                        on_focus: if not self.focus: root.set_gains({"i_main": self.text})
-                        on_focus: if self.focus: self.select_all()
-                    TextInput:
-                        id: d_main
-                        input_filter: 'float'
-                        text: "1"
-                        multiline: False
-                        write_tab: False
-                        is_focusable: True
-                        on_focus: if not self.focus: root.set_gains({"d_main": self.text})
-                        on_focus: if self.focus: self.select_all()
-                BoxLayout:
-                    size_hint_x: 0.2
-                    Label:
-                        text: 'halc'
-                    TextInput:
-                        id: p_halc
-                        input_filter: 'float'
-                        text: "50"
-                        multiline: False
-                        write_tab: False
-                        is_focusable: True
-                        on_focus: if not self.focus: root.set_gains({"p_halc": self.text})
-                        on_focus: if self.focus: self.select_all()
-                    TextInput:
-                        id: i_halc
-                        input_filter: 'float'
-                        text: "50"
-                        multiline: False
-                        write_tab: False
-                        is_focusable: True
-                        on_focus: if not self.focus: root.set_gains({"i_halc": self.text})
-                        on_focus: if self.focus: self.select_all()
-                    TextInput:
-                        id: d_halc
-                        input_filter: 'float'
-                        text: "250"
-                        multiline: False
-                        write_tab: False
-                        is_focusable: True
-                        on_focus: if not self.focus: root.set_gains({"d_halc": self.text})
-                        on_focus: if self.focus: self.select_all()
-                Label:
+                    id: Program_time_remaining
+                    text: "countdown: 00:00"
+                Button:
                     size_hint_x: 0.1
+                    id: start_button
+                    text: "Start"
+                    on_press: root.start_plan(address.text, port.text)
+                Button:
+                    size_hint_x: 0.1
+                    id: cancel_button
+                    text: "Cancel"
+                    on_press: root.cancel_plan(address.text, port.text)
+                Label:
+                    size_hint_x: 0.05
+                BoxLayout:
+                    size_hint_x: 0.2
+                    Label:
+                        text: "Flows:"
+                    Label:
+                        id: ar_flow_text
+                        text: "0.0"
+                    Label:
+                        id: h2_flow_text
+                        text: "0.0"
+                Label:
+                    size_hint_x: 0.03
+                BoxLayout:
+                    size_hint_x: 0.2
+                    Label:
+                        text: "Temps:"
+                    Label:
+                        id: Temperature_sample_text
+                        text: "0.0"
+                    Label:
+                        id: Temperature_halcogenide_text
+                        text: "0.0"
                 TextInput:
                     id: date
                     size_hint_x: 0.15
@@ -127,17 +102,10 @@
                     id: zero_button
                     text: "now"
                     on_press: root.changet0()
-                Label:
-                    size_hint_x: 0.1
-                Button:
-                    size_hint_x: 0.1
-                    id: start_button
-                    text: "Start"
-                    on_press: root.start_plan(address.text, port.text)
 
             BoxLayout:
                 id: display_box
-                Control:
+                Values_control_layout:
                     id: control
 
             BoxLayout:
@@ -203,7 +171,7 @@
                 id: manual_bar
                 orientation: 'vertical'
 
-<Control>:
+<Values_control_layout>:
     cols: 2
     padding: 5
     RTdisp:

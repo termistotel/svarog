@@ -1,20 +1,18 @@
 from pylib.movable_content import StepProgButton, ManualProgButton
-from kivy_garden.graph import Graph, LinePlot, HBar
 
-from kivy.uix.boxlayout import BoxLayout
-from kivy.uix.gridlayout import GridLayout
 from kivy.uix.relativelayout import RelativeLayout
 
 from kivy.uix.label import Label
 from kivy.clock import Clock
 
-from kivy.properties import NumericProperty, StringProperty
+from kivy.properties import NumericProperty
 
 from functools import partial
 
 import numpy as np
 
 import json, requests, time, datetime
+import _thread
 
 key_order = ["ar_flow", "h2_flow", "Temperature_sample", "Temperature_halcogenide", "time"]
 init_data = {}
@@ -30,11 +28,8 @@ class MainBox(RelativeLayout):
     main_pad_x = NumericProperty(0.06)
     step_config_size_hint_y = 0.2
     setpointTimer = None
-    gainsTimer = None
     setpoints = {"ar_flow": 0, "h2_flow": 0, "Temperature_sample": 0, "Temperature_halcogenide": 0}
     setpoints_toset = {}
-    gains = {'p_main': 1, 'i_main': 1, 'd_main': 1, 'p_halc': 1, 'i_halc': 1, 'd_halc': 1}
-    gains_toset = {}
     address = "127.0.0.1"
     port = "1234"
     plot_points_num = 1000
@@ -147,41 +142,63 @@ class MainBox(RelativeLayout):
         url = "http://"+address+":"+port+"/get_vals"
         current_t = self.current_t.timestamp()
 
-        try:
-            resp = requests.get(url, params={"t0": current_t-2})
-            returned = resp.text
-            returned = json.loads(returned)
-            resp.close()
+        # Define data acquisition as separate function
+        # We do this to start this function in a thread
+        # to prevent UI blocking while waiting for get request
+        def get_data_thread(self, url, current_t):
+            try:
+                # Get request to server 
+                resp = requests.get(url, params={"t0": current_t-2})
+                returned = resp.text
+                returned = json.loads(returned)
+                resp.close()
 
-            graph_data = returned["data"]
-            setpoints = returned["setpoints"]
+                graph_data = returned["data"]
+                setpoints = returned["setpoints"]
 
-            indices = []
-            time_length = len(graph_data["time"])
-            for i, val in enumerate(graph_data["time"]):
-                if val in self.graph_data["time"][-time_length:]:
-                    continue
+                # Display program remaining time:
+                # print(returned["Program_time_remaining"]//60, returned["Program_time_remaining"]%60)
+                # self.ids["Program_time_remaining"].text = "countdown: {:02d}:{:02d}".format(int(returned["Program_time_remaining"])//60, int(returned["Program_time_remaining"])%60)
+                self.ids["Program_time_remaining"].text = "status: " + returned["Program_time_remaining"]
+
+                # Take indices of values that have not been preveously entered
+                indices = []
+                time_length = len(graph_data["time"])
+                for i, val in enumerate(graph_data["time"]):
+                    if val in self.graph_data["time"][-time_length:]:
+                        continue
+                    else:
+                        indices.append(i)
+
+                # Add new data to graph data by numpy appending/concatenating
+                for key in graph_data:
+                    graph_data[key] = np.array(graph_data[key])[indices]
+                    self.graph_data[key] = np.append(self.graph_data[key], graph_data[key])
+
+                    # set text for current values
+                    if key + "_text" in self.ids:
+                        if len(graph_data[key]) > 0:
+                            self.ids[key+"_text"].text = "{:.1f}".format(np.mean(graph_data[key]))
+
+                # Set the current time to the most recently recieved time
+                if graph_data["time"].size > 0:
+                    current_t = np.amax(graph_data["time"])
+                    # print(np.max(graph_data["time"]))
                 else:
-                    indices.append(i)
+                    current_t = min(current_t + float(returned["maxTime"]), datetime.datetime.now().timestamp())
+                self.current_t = datetime.datetime.fromtimestamp(current_t)
 
-            for key in graph_data:
-                graph_data[key] = np.array(graph_data[key])[indices]
-                self.graph_data[key] = np.append(self.graph_data[key], graph_data[key])
+                self.update_graphs(graph_data)
+                self.update_setpoints(setpoints, update_widgets=update_widgets)
 
-            if graph_data["time"].size > 0:
-                current_t = np.amax(graph_data["time"])
-                # print(np.max(graph_data["time"]))
-            else:
-                current_t = min(current_t + float(returned["maxTime"]), datetime.datetime.now().timestamp())
-            self.current_t = datetime.datetime.fromtimestamp(current_t)
+                # repeat getting of data in 1/self.getps seconds
+                Clock.schedule_once(partial(self.get_data, address, port, False), 1/self.getps)
 
-            self.update_graphs(graph_data)
-            self.update_setpoints(setpoints, update_widgets=update_widgets)
+            except Exception as e:
+                print(e)
 
-            Clock.schedule_once(partial(self.get_data, address, port, False), 1/self.getps)
+        _thread.start_new_thread(get_data_thread, (self, url, current_t))
 
-        except Exception as e:
-            print(e)
 
     def auto_toggle(self, widget):
         value = widget.state
@@ -218,15 +235,6 @@ class MainBox(RelativeLayout):
         if any_flag and (self.setpointTimer is None):
             self.setpointTimer = Clock.schedule_once(self.send_setpoint, 1/self.getps)
 
-    def set_gains(self, gains):
-        any_flag = False
-        for key in gains:
-            if self.gains[key] != gains[key]:
-                self.gains_toset[key] = gains[key]
-                any_flag = True
-        if any_flag and (self.gainsTimer is None):
-            self.gainsTimer = Clock.schedule_once(self.send_gain, 1/self.getps)
-
     def send_setpoint(self, dt=0):
         address = self.address
         port = self.port
@@ -242,22 +250,6 @@ class MainBox(RelativeLayout):
             print(e)
         self.setpointTimer = None
         self.setpoints_toset = {}
-
-    def send_gain(self, dt=0):
-        address = self.address
-        port = self.port
-        url = "http://"+address+":"+port+"/set_gains"
-
-        params = {}
-        for key in self.gains_toset:
-            params[key] = self.gains_toset[key]
-        try:
-            resp = requests.get(url, params=params)
-            resp.close()
-        except Exception as e:
-            print(e)
-        self.gainsTimer = None
-        self.gains_toset = {}
 
     def changet0(self, date=None, time=None):
         if date is None:
@@ -283,6 +275,14 @@ class MainBox(RelativeLayout):
     def update_time_text(self):
         self.ids.date.text = self.t0.date().isoformat()
         self.ids.time.text = self.t0.time().isoformat()
+
+    def cancel_plan(self, address=None, port=None):
+        if address is None:
+            address = self.address
+        if port is None:
+            port = self.port
+        run_url = "http://"+address+":"+port+"/start_program"
+        requests.get(run_url, params={"state": "stop"})
 
     def start_plan(self, address=None, port=None):
         if address is None:
@@ -356,6 +356,7 @@ class MainBox(RelativeLayout):
         self.manual_bar = self.ids.manual_bar
         self.manual_button = ManualProgButton(self)
         self.manual_bar.add_widget(self.manual_button)
+        self.manual_bar.add_widget(Label(size_hint_y=0.5))
         self.add_widget(self.manual_button.lockChild)
 
         self.setup_bar = self.ids.setup_bar
@@ -379,104 +380,8 @@ class MainBox(RelativeLayout):
         # self.setup_bar.add_widget(self.step_ph, index=-2)
         # self.add_widget(self.start_box, index=1)
 
-        print(self.gains)
-
     # This is required for android to correctly display widgets on screen rotate
     def on_size(self, val1, val2):
         for step_button in self.steps:
             step_button.size = (0, self.step_config_size_hint_y*self.height)
         Clock.schedule_once(lambda dt: self.canvas.ask_update(), 0.2)
-
-class Control(GridLayout):
-    """docstring for Control"""
-    def __init__(self, *args, **kwargs):
-        super(Control, self).__init__(*args, **kwargs)
-
-        print('yap',self.ids)
-        Clock.schedule_once(self.initialize_plots, 1)
-
-    def initialize_plots(self, dt):
-        flow_color = [1, 0, 0, 1]
-        temp_color = [0, 1, 0, 1]
-        setpoint_color = [0.5, 0.5, 1, 1]
-        # point_size = 2
-        line_width = 3
-
-        # self.ar_flow_plot = ScatterPlot(color=flow_color, point_size=point_size)
-        self.ar_flow_plot = LinePlot(color=flow_color, line_width=line_width)
-        self.ar_flow_setpoint_plot = HBar(color=setpoint_color)
-        self.ids.ar_flow.add_plot(self.ar_flow_plot)
-        self.ids.ar_flow.add_plot(self.ar_flow_setpoint_plot)
-
-        # self.h2_flow_plot = ScatterPlot(color=flow_color, point_size=point_size)
-        self.h2_flow_plot = LinePlot(color=flow_color, line_width=line_width)
-        self.h2_flow_setpoint_plot = HBar(color=setpoint_color)
-        self.ids.h2_flow.add_plot(self.h2_flow_plot)
-        self.ids.h2_flow.add_plot(self.h2_flow_setpoint_plot)
-
-        # self.samp_temp_plot = ScatterPlot(color=temp_color, point_size=point_size)
-        self.samp_temp_plot = LinePlot(color=temp_color, line_width=line_width)
-        self.samp_temp_setpoint_plot = HBar(color=setpoint_color)
-        self.ids.samp_temp.add_plot(self.samp_temp_plot)
-        self.ids.samp_temp.add_plot(self.samp_temp_setpoint_plot)
-
-        # self.halc_temp_plot = ScatterPlot(color=temp_color, point_size=point_size)
-        self.halc_temp_plot = LinePlot(color=temp_color, line_width=line_width)
-        self.halc_temp_setpoint_plot = HBar(color=setpoint_color)
-        self.ids.halc_temp.add_plot(self.halc_temp_plot)
-        self.ids.halc_temp.add_plot(self.halc_temp_setpoint_plot)
-
-
-class ControlBox(BoxLayout):
-    """docstring for ControlBox"""
-    perc_inc = NumericProperty(0.1)
-    name = StringProperty("tst")
-    typ = StringProperty("exp")
-    min_val = NumericProperty(0)
-    max_val = NumericProperty(1)
-    value = NumericProperty(0)
-    precision = NumericProperty(1)
-
-    def change_value(self, sign, *args):
-        value = float(self.value)
-        if self.typ == "exp":
-            value += sign*self.perc_inc*value
-        elif self.typ == "linear":
-            value += sign*self.perc_inc
-        elif self.typ == "linear_round":
-            value = value + sign*self.perc_inc
-            # value = (tmp_value//self.perc_inc) * self.perc_inc
-
-        value = min(self.max_val, max(self.min_val, value))
-        self.value = value
-
-    def __init__(self, **kwargs):
-        super(ControlBox, self).__init__(**kwargs)
-
-        # Add control functions
-        # self.ids.inc.on_press = print
-        # self.ids.inc.on_press = partial(self.change_value, 1)
-        # self.ids.dec.on_press = partial(self.change_value, -1)
-
-class RTdisp(Graph):
-    """docstring for RTdisp"""
-
-    default_x = (-0, 15/8)
-    default_y = (-0, 1)
-    default_ticks = (0.25, 0.5)
-
-    def set_defaults(self):
-        self.xmin = self.default_x[0]
-        self.xmax = self.default_x[1]
-
-        self.ymin = self.default_y[0]
-        self.ymax = self.default_y[1]
-
-        self.x_ticks_major = self.default_ticks[0]
-        self.y_ticks_major = self.default_ticks[1]
-
-    def __init__(self, *args, **kwargs):
-        # self.default_y = (-0, 1)
-        # self.default_x = (-0, 1)
-        # self.default_ticks = (0.25, 0.25)
-        super(RTdisp, self).__init__(*args, **kwargs)
