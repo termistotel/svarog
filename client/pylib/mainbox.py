@@ -1,11 +1,12 @@
 from pylib.movable_content import StepProgButton, ManualProgButton
+from pylib.compare_box import ReviewContainer
 
 from kivy.uix.relativelayout import RelativeLayout
 
 from kivy.uix.label import Label
 from kivy.clock import Clock
 
-from kivy.properties import NumericProperty
+from kivy.properties import NumericProperty, StringProperty
 
 from functools import partial
 
@@ -14,12 +15,17 @@ import numpy as np
 import json, requests, time, datetime
 import _thread
 
-key_order = ["ar_flow", "h2_flow", "Temperature_sample", "Temperature_halcogenide", "time"]
+# key_order = ["ar_flow", "h2_flow", "Temperature_sample", "Temperature_halcogenide", "time"]
+key_order = ["ar_flow", "ar_flow_setpoint", "h2_flow", "h2_flow_setpoint",
+             "Temperature_sample", "Temperature_sample_setpoint",
+             "Temperature_halcogenide", "Temperature_halcogenide_setpoint",
+             "Power_main", "Power_seco", "time"]
 init_data = {}
 for key in key_order:
     init_data[key] = np.ones((0,), dtype= np.float32)
 
 class MainBox(RelativeLayout):
+    _power_max_quickfix = 0.99
     graph_data = init_data.copy()
     getps = NumericProperty(1.0)
     max_step_num = 10
@@ -30,8 +36,8 @@ class MainBox(RelativeLayout):
     setpointTimer = None
     setpoints = {"ar_flow": 0, "h2_flow": 0, "Temperature_sample": 0, "Temperature_halcogenide": 0}
     setpoints_toset = {}
-    address = "127.0.0.1"
-    port = "1234"
+    address = StringProperty("127.0.0.1")
+    port = StringProperty("1234")
     plot_points_num = 1000
 
     def change_step_num(self, dn):
@@ -62,24 +68,45 @@ class MainBox(RelativeLayout):
         t0 = self.t0.timestamp()
         N = max((len(self.graph_data["time"])//self.plot_points_num)*2, 1)
 
-        ts = self.graph_data["time"][::N]
-        arfs = self.graph_data["ar_flow"][::N]
-        h2fs = self.graph_data["h2_flow"][::N]
-        sTs = self.graph_data["Temperature_sample"][::N]
-        hTs = self.graph_data["Temperature_halcogenide"][::N]
-        # print(N, type(ts), ts.size, np.min(ts), np.max(ts))
-        # print(N, type(arfs), arfs.size, np.min(arfs), np.max(arfs))        
+        cnt = self.control
+        plots = [cnt.ar_flow_plot, cnt.ar_flow_setpoint_plot, cnt.h2_flow_plot, cnt.h2_flow_setpoint_plot,
+                 cnt.samp_temp_plot, cnt.samp_temp_setpoint_plot, cnt.halc_temp_plot, cnt.halc_temp_setpoint_plot,
+                 cnt.samp_power_plot, cnt.halc_power_plot]
+        gd_keys = key_order
 
-        self.control.ar_flow_plot.points = [((t - t0)/60, v) for t, v in zip(ts, arfs)]
-        self.control.h2_flow_plot.points = [((t - t0)/60, v) for t, v in zip(ts, h2fs)]
-        self.control.samp_temp_plot.points = [((t - t0)/60, v) for t, v in zip(ts, sTs)]
-        self.control.halc_temp_plot.points = [((t - t0)/60, v) for t, v in zip(ts, hTs)]
+        ts = self.graph_data["time"][::N]
+        for key, plot in zip(gd_keys, plots):
+            if key =="time":
+                continue
+            gds = self.graph_data[key][::N]
+            if key == 'Power_main':
+                plot.points = [((t - t0)/60, v*self.control.ids.samp_temp.ymax*self._power_max_quickfix) for t, v in zip(ts, gds)]
+            elif key == 'Power_seco':
+                plot.points = [((t - t0)/60, v*self.control.ids.halc_temp.ymax*self._power_max_quickfix) for t, v in zip(ts, gds)]
+            else:
+                plot.points = [((t - t0)/60, v) for t, v in zip(ts, gds)]
+
+        # arfs = self.graph_data["ar_flow"][::N]
+        # h2fs = self.graph_data["h2_flow"][::N]
+        # sTs = self.graph_data["Temperature_sample"][::N]
+        # sPs = self.graph_data["Power_main"][::N]
+        # hTs = self.graph_data["Temperature_halcogenide"][::N]
+        # hPs = self.graph_data["Power_seco"][::N]
+        # # print(N, type(ts), ts.size, np.min(ts), np.max(ts))
+        # # print(N, type(arfs), arfs.size, np.min(arfs), np.max(arfs))        
+
+        # self.control.ar_flow_plot.points = [((t - t0)/60, v) for t, v in zip(ts, arfs)]
+        # self.control.h2_flow_plot.points = [((t - t0)/60, v) for t, v in zip(ts, h2fs)]
+        # self.control.samp_temp_plot.points = [((t - t0)/60, v) for t, v in zip(ts, sTs)]
+        # self.control.samp_power_plot.points = [((t - t0)/60, v*self.control.ids.samp_temp.ymax*self._power_max_quickfix) for t, v in zip(ts, sPs)]
+        # self.control.halc_temp_plot.points = [((t - t0)/60, v) for t, v in zip(ts, hTs)]
+        # self.control.halc_power_plot.points = [((t - t0)/60, v*self.control.ids.halc_temp.ymax*self._power_max_quickfix) for t, v in zip(ts, hPs)]
 
     def getmaxys(self):
         maxys = []
         for graph in self.graphs:
             maxy = max(max([point[1] for point in graph.plots[0].points], default=graph.ymax),
-                        max(graph.plots[1].points, default=graph.ymax))
+                        max([point[1] for point in graph.plots[1].points], default=graph.ymax))
             maxys.append(maxy)
         return maxys
 
@@ -88,15 +115,35 @@ class MainBox(RelativeLayout):
         maxys = self.getmaxys()
         # maxys = [np.max(values[key]) for key in key_order]
 
+        cnt = self.control
+        plots = [cnt.ar_flow_plot, cnt.ar_flow_setpoint_plot, cnt.h2_flow_plot, cnt.h2_flow_setpoint_plot,
+                 cnt.samp_temp_plot, cnt.samp_temp_setpoint_plot, cnt.halc_temp_plot, cnt.halc_temp_setpoint_plot,
+                 cnt.samp_power_plot, cnt.halc_power_plot]
+        gd_keys = key_order
+
         ts = values["time"]
-        for t, val in zip((ts-t0)/60, values["ar_flow"]):
-            self.control.ar_flow_plot.points.append([t, val])
-        for t, val in zip((ts-t0)/60, values["h2_flow"]):            
-            self.control.h2_flow_plot.points.append([t, val])
-        for t, val in zip((ts-t0)/60, values["Temperature_sample"]):            
-            self.control.samp_temp_plot.points.append([t, val])
-        for t, val in zip((ts-t0)/60, values["Temperature_halcogenide"]):            
-            self.control.halc_temp_plot.points.append([t, val])
+        for key, plot in zip(gd_keys, plots):
+            for t, val in zip((ts-t0)/60, values[key]):
+                if key == 'Power_main':
+                    plot.points.append([t, val*self.control.ids.samp_temp.ymax*self._power_max_quickfix])
+                elif key == 'Power_seco':
+                    plot.points.append([t, val*self.control.ids.halc_temp.ymax*self._power_max_quickfix])
+                else:
+                    plot.points.append([t, val])
+
+        # for t, val in zip((ts-t0)/60, values["ar_flow"]):
+        #     self.control.ar_flow_plot.points.append([t, val])
+        # for t, val in zip((ts-t0)/60, values["h2_flow"]): 
+        #     self.control.h2_flow_plot.points.append([t, val])
+        # for t, val in zip((ts-t0)/60, values["Temperature_sample"]):
+        #     self.control.samp_temp_plot.points.append([t, val])
+        # for t, val in zip((ts-t0)/60, values["Power_main"]*self.control.ids.samp_temp.ymax*self._power_max_quickfix):
+        #     self.control.samp_power_plot.points.append([t, val])
+        # for t, val in zip((ts-t0)/60, values["Temperature_halcogenide"]):
+        #     self.control.halc_temp_plot.points.append([t, val])
+        # for t, val in zip((ts-t0)/60, values["Power_seco"]*self.control.ids.halc_temp.ymax*self._power_max_quickfix):
+        #     self.control.halc_power_plot.points.append([t, val])
+
         maxys[0] = np.amax(values["ar_flow"], initial=maxys[0])
         maxys[1] = np.amax(values["h2_flow"], initial=maxys[1])
         maxys[2] = np.amax(values["Temperature_sample"], initial=maxys[2])
@@ -106,7 +153,6 @@ class MainBox(RelativeLayout):
 
         N = (len(self.control.ar_flow_plot.points)//2) * 2
         if N > self.plot_points_num:
-            # print(N)
             self.set_plot_points()
 
         widget_list = self.graphs
@@ -116,6 +162,7 @@ class MainBox(RelativeLayout):
             if maxy > graph.ymax:
                 graph.ymax *= 2
                 graph.y_ticks_major = (graph.ymax - graph.ymin)/4
+                self.set_plot_points()
 
             if (tmax - t0)/60 > graph.xmax:
                 graph.xmax *= 2
@@ -127,10 +174,10 @@ class MainBox(RelativeLayout):
 
         tmin, tmax = self.control.ids.ar_flow.xmin, self.control.ids.ar_flow.xmax
 
-        self.control.ar_flow_setpoint_plot.points = [(self.setpoints["ar_flow"])]
-        self.control.h2_flow_setpoint_plot.points = [(self.setpoints["h2_flow"])]
-        self.control.samp_temp_setpoint_plot.points = [(self.setpoints["Temperature_sample"])]
-        self.control.halc_temp_setpoint_plot.points = [(self.setpoints["Temperature_halcogenide"])]
+        # self.control.ar_flow_setpoint_plot.points = [(self.setpoints["ar_flow"])]
+        # self.control.h2_flow_setpoint_plot.points = [(self.setpoints["h2_flow"])]
+        # self.control.samp_temp_setpoint_plot.points = [(self.setpoints["Temperature_sample"])]
+        # self.control.halc_temp_setpoint_plot.points = [(self.setpoints["Temperature_halcogenide"])]
 
         if update_widgets:
             self.manual_button.lockChild.ids.ar_flow.value = self.setpoints["ar_flow"]
@@ -148,7 +195,7 @@ class MainBox(RelativeLayout):
         def get_data_thread(self, url, current_t):
             try:
                 # Get request to server 
-                resp = requests.get(url, params={"t0": current_t-2})
+                resp = requests.get(url, params={"t0": current_t-2}, timeout=5)
                 returned = resp.text
                 returned = json.loads(returned)
                 resp.close()
@@ -170,6 +217,12 @@ class MainBox(RelativeLayout):
                     else:
                         indices.append(i)
 
+                # Add setpoint data to graph data
+                for key in setpoints:
+                    set_key = key + '_setpoint'
+                    setpoint_data = np.array([setpoints[key] for _ in range(len(indices))])
+                    self.graph_data[set_key] = np.append(self.graph_data[set_key], setpoint_data)
+
                 # Add new data to graph data by numpy appending/concatenating
                 for key in graph_data:
                     graph_data[key] = np.array(graph_data[key])[indices]
@@ -188,8 +241,12 @@ class MainBox(RelativeLayout):
                     current_t = min(current_t + float(returned["maxTime"]), datetime.datetime.now().timestamp())
                 self.current_t = datetime.datetime.fromtimestamp(current_t)
 
-                self.update_graphs(graph_data)
                 self.update_setpoints(setpoints, update_widgets=update_widgets)
+                for key in setpoints:
+                    set_key = key + '_setpoint'
+                    graph_data[set_key] = [setpoints[key] for _ in range(time_length)]
+                # print(graph_data)
+                self.update_graphs(graph_data)
 
                 # repeat getting of data in 1/self.getps seconds
                 Clock.schedule_once(partial(self.get_data, address, port, False), 1/self.getps)
@@ -198,7 +255,6 @@ class MainBox(RelativeLayout):
                 print(e)
 
         _thread.start_new_thread(get_data_thread, (self, url, current_t))
-
 
     def auto_toggle(self, widget):
         value = widget.state
@@ -221,10 +277,19 @@ class MainBox(RelativeLayout):
             self.start_box.add_widget(self.manual_bar)
             self.setup_bar.add_widget(self.step_ph, index=-2)
 
+    def review_toggle(self, state='down'):
+        if state == "down":
+            self.remove_widget(self.main_container)
+            self.add_widget(self.review_container)
+        else:
+            self.remove_widget(self.review_container)
+            self.add_widget(self.main_container)
+ 
     def connect(self, address, port):
         self.address = address
         self.port = port
         Clock.schedule_once(partial(self.get_data, address, port, True), 1/self.getps)
+        self.review_container.get_progs()
 
     def set_setpoint(self, setpoints):
         any_flag = False
@@ -318,6 +383,68 @@ class MainBox(RelativeLayout):
         resp = requests.get(run_url, params={"state": "start", "name": name})
         resp.close()
 
+    def cancel_random(self, address=None, port=None, main=True):
+        if address is None:
+            address = self.address
+        if port is None:
+            port = self.port
+        run_url = "http://"+address+":"+port+"/start_random_heating"
+        requests.get(run_url, params={"state": "stop"})
+
+    def start_random(self, address=None, port=None, main=True):
+        if address is None:
+            address = self.address
+        if port is None:
+            port = self.port
+        run_url = "http://"+address+":"+port+"/start_random_heating"
+        if main:
+            name = datetime.datetime.now().isoformat() + "_random_main"
+            resp = requests.get(run_url, params={"state": "start", "name": name, "heater": "main"})
+            resp.close()
+        else:
+            name = datetime.datetime.now().isoformat() + "_random_seco"
+            resp = requests.get(run_url, params={"state": "start", "name": name, "heater": "seco"})
+            resp.close()
+
+    def cancel_random_setpoint(self, address=None, port=None, main=True):
+        if address is None:
+            address = self.address
+        if port is None:
+            port = self.port
+        run_url = "http://"+address+":"+port+"/start_random_setpoint"
+        requests.get(run_url, params={"state": "stop"})
+
+    def start_random_setpoint(self, address=None, port=None, main=True):
+        if address is None:
+            address = self.address
+        if port is None:
+            port = self.port
+        run_url = "http://"+address+":"+port+"/start_random_setpoint"
+        if main:
+            name = datetime.datetime.now().isoformat() + "_random_setpoint_main"
+            resp = requests.get(run_url, params={"state": "start", "name": name, "heater": "main"})
+            resp.close()
+        else:
+            name = datetime.datetime.now().isoformat() + "_random_setpoint_seco"
+            resp = requests.get(run_url, params={"state": "start", "name": name, "heater": "seco"})
+            resp.close()
+
+    def cancel_learn(self, address=None, port=None):
+        if address is None:
+            address = self.address
+        if port is None:
+            port = self.port
+        run_url = "http://"+address+":"+port+"/start_learning"
+        requests.get(run_url, params={"state": "stop"})
+
+    def start_learn(self, address=None, port=None):
+        if address is None:
+            address = self.address
+        if port is None:
+            port = self.port
+        run_url = "http://"+address+":"+port+"/start_learning"
+        requests.get(run_url, params={"state": "start"})
+
     def __init__(self, **kwargs):
         super(MainBox, self).__init__(**kwargs)
         self.initialize_mainbox(0)
@@ -341,6 +468,8 @@ class MainBox(RelativeLayout):
         # Main Widgets
         # self.control=Control()
         self.control=self.ids.control
+        self.control.initialize_plots(0)
+
         # self.browser=FileBrowser(main=self)
         # self.kernelEditor=KernelEditor(main=self)
 
@@ -379,6 +508,10 @@ class MainBox(RelativeLayout):
         # self.connect(self.address, self.port)
         # self.setup_bar.add_widget(self.step_ph, index=-2)
         # self.add_widget(self.start_box, index=1)
+
+        # self.main_container = self.ids.main_container
+        # self.review_container = self.ids.review_container
+        self.remove_widget(self.review_container)
 
     # This is required for android to correctly display widgets on screen rotate
     def on_size(self, val1, val2):

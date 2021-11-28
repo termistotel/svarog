@@ -1,8 +1,17 @@
 <MainBox>:
     main_pad_y: 0.05
     main_pad_x: 0.05
+    review_container: review_container.__self__
+    main_container: main_container.__self__
+    ReviewContainer:
+        id: review_container
+        size_hint_y: 1
+        size_hint_x: 1
+        prog_list_url: "http://"+root.address+":"+root.port+"/get_program_list"
+        data_get_url: "http://"+root.address+":"+root.port+"/get_vals"
     RelativeLayout:
         orientation: 'horizontal'
+        id: main_container
         BoxLayout:
             orientation: 'vertical'
             size_hint_x: 1-root.main_pad_x
@@ -12,8 +21,11 @@
                 size_hint_y: root.main_pad_y
                 step_box: step_box.__self__
                 step_ph: step_ph.__self__
-                Label:
+                Button:
+                    id: Review
                     size_hint_x: 0.1
+                    text: 'Review'
+                    on_release: root.review_toggle(state='down')
                 ToggleButton:
                     id: prog_toggle
                     text: "Program"
@@ -105,6 +117,7 @@
 
             BoxLayout:
                 id: display_box
+                size_hint_y: 1-root.main_pad_y
                 Values_control_layout:
                     id: control
 
@@ -134,15 +147,46 @@
                     text: "Connect"
                     on_press: root.connect(address.text, port.text)
                 Label:
-                ToggleButton:
-                    group: "displays"
+                    size_hint_x: 0.5
+                Button:
                     size_hint_x: 0.1
-                ToggleButton:
-                    group: "displays"
+                    id: start_learn_button
+                    text: "Start learn"
+                    on_press: root.start_learn(address.text, port.text)
+                Button:
                     size_hint_x: 0.1
-                ToggleButton:
-                    group: "displays"
+                    id: cancel_learn_button
+                    text: "Stop learn"
+                    on_press: root.cancel_learn(address.text, port.text)
+                Label:
+                    size_hint_x: 0.02
+                Button:
                     size_hint_x: 0.1
+                    id: start_learn_button
+                    text: "StartSet"
+                    on_press: root.start_random_setpoint(address.text, port.text, main_toggle.state=="down")
+                Button:
+                    size_hint_x: 0.1
+                    id: cancel_learn_button
+                    text: "StopSet"
+                    on_press: root.cancel_random_setpoint(address.text, port.text, main_toggle.state=="down")
+                Label:
+                    size_hint_x: 0.02
+                ToggleButton:
+                    id: main_toggle
+                    text: "main/seco"
+                    group: "main_toggle"
+                    size_hint_x: 0.1
+                Button:
+                    size_hint_x: 0.1
+                    id: start_random_button
+                    text: "StartRND"
+                    on_press: root.start_random(address.text, port.text, main_toggle.state=="down")
+                Button:
+                    size_hint_x: 0.1
+                    id: cancel_random_button
+                    text: "StopRND"
+                    on_press: root.cancel_random(address.text, port.text, main_toggle.state=="down")
         BoxLayout:
             id: start_box
             choice_bar: choice_bar.__self__
@@ -242,6 +286,70 @@
         y_ticks_major: 50
         y_grid_label: True
         padding: 5
+
+<ReviewContainer>:
+    size_hint: (1,1)
+    main_pad_y: 0.05
+    main_pad_x: 0.1
+    left_bar: left_bar.__self__
+    right_bar: right_bar.__self__
+    BoxLayout:
+        orientation: 'vertical'
+        size_hint_x: 1
+        pos_hint: {'x': 0, 'y': 0}
+        BoxLayout:
+            id: setup_bar
+            size_hint_y: root.main_pad_y
+            Label:
+                size_hint_x: 0.09
+                text: "Svarog"
+            Button:
+                id: Review
+                size_hint_x: 0.1
+                text: 'Control'
+                on_release: root.review_toggle(state='normal')
+            Label:
+                size_hint_x: 1.58
+        BoxLayout:
+            orientation: 'horizontal'
+            size_hint_x: 1
+            size_hint_y: 1-2*root.main_pad_y
+            BoxLayout:
+                size_hint_x: root.main_pad_x
+                ScrollView:
+                    size_hint_y: 1
+                    do_scroll_x: False
+                    do_scroll_y: True
+                    FloatLayout:
+                        id: left_bar
+                        size_hint_y: None
+                        height: sum([child.height for child in self.children])
+            BoxLayout:
+                size_hint_x: 1-2*root.main_pad_x
+                id: display_box
+                Values_control_layout:
+                    id: control
+            BoxLayout:
+                size_hint_x: root.main_pad_x
+                ScrollView:
+                    size_hint_y: 1
+                    do_scroll_x: False
+                    do_scroll_y: True
+                    FloatLayout:
+                        id: right_bar
+                        size_hint_y: None
+                        height: sum([child.height for child in self.children])
+        BoxLayout:
+            orientation: 'horizontal'
+            size_hint_y: root.main_pad_y
+            Button:
+                size_hint_x: root.main_pad_x
+                text: "Save CSV"
+            Label:
+                size_hint_x: 1-2*root.main_pad_x
+            Button:
+                size_hint_x: root.main_pad_x
+                text: "Save CSV"
 
 <StepProgButton>:
     y: self.main.ids.step_bar.height - (self.number+1)*self.height
@@ -451,3 +559,7 @@
                 max: root.max_val
                 value: root.value
                 on_value: root.value = round(root.perc_inc * (round(self.value*10**root.precision)//round(root.perc_inc*10**root.precision)), root.precision)
+
+<ProgSelector>:
+    name: self.data['name']
+    text: self.name_to_text(self.name)

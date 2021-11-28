@@ -1,7 +1,7 @@
 import numpy as np
 
 import _thread
-from threading import Thread
+from threading import Thread, Lock
 
 import sqlite3
 
@@ -15,7 +15,7 @@ import mimetypes
 import json, re
 from libs.temp_control import TempController
 
-key_order = ["ar_flow", "h2_flow", "Temperature_sample", "Temperature_halcogenide", "time"]
+key_order = ["ar_flow", "h2_flow", "Temperature_sample", "Temperature_halcogenide", "Power_main", "Power_seco", "time"]
 
 def linear(fx, x1, y1, x2, y2):
     k = (y2 - y1)/(x2 - x1)
@@ -23,7 +23,7 @@ def linear(fx, x1, y1, x2, y2):
     return y
 
 class FurnaceServer(object):
-    values = {"ar_flow": 0, "h2_flow": 0, "Temperature_sample": 1, "Temperature_halcogenide": 1}
+    values = {"ar_flow": 0, "h2_flow": 0, "Temperature_sample": 1, "Temperature_halcogenide": 1, 'Power_main': 0, 'Power_seco': 0}
     setpoints = {"ar_flow": 0, "h2_flow": 0, "Temperature_sample": 1, "Temperature_halcogenide": 1}
     minvalues = {"ar_flow": lambda: 0, "h2_flow": lambda: 0, "Temperature_sample": lambda: 75, "Temperature_halcogenide": lambda: 75}
     temp_t = {"ar_flow": time.time(), "h2_flow": time.time(), "Temperature_sample": time.time(), "Temperature_halcogenide": time.time()}
@@ -33,7 +33,9 @@ class FurnaceServer(object):
     programs = []
     data_thread = None
     program_thread = None
-    relative_tolerance = 0.1
+    random_heating_thread = None
+    random_setpoint_thread = None
+    relative_tolerance = 0.05 #
     port = '/dev/ttyUSB0'
     baudrate = 115200
     ser = None
@@ -41,25 +43,35 @@ class FurnaceServer(object):
     program_current_wait = 0
     program_current_wait_status = "None"
 
+    nn_control = True
+    learn_flag = False
+
     # This should be read in the future
     Tenv = 25
+    length_contr = 1000
+    length_pred = 1000
 
     def __init__(self, dbName = "example.db"):
+        self.ar_flow, self.h2_flow, self.Temperature_sample, self.Temperature_halcogenide = 0.0, 0.0, 0.0, 0.0
         self.dbName = dbName
 
         # Compensation for primary furnace heating up the secondary furnace
         self.minvalues['Temperature_halcogenide'] = lambda: linear(lambda: self.values["Temperature_sample"], 35, 35, 800, 90)
 
         # Start connection to arduino and clear input
+        self.serial_lock = Lock()
         self.ser = serial.Serial(port=self.port, baudrate=self.baudrate, timeout=1)
         time.sleep(5)
         self.clear_serial_input()
 
-        # Create temperature control wrapper
-        self.tc = TempController()
-
         # Start data collection from arduino
-        self.data_thread = _thread.start_new_thread(self.data_collection, ())
+        # self.data_thread = _thread.start_new_thread(self.data_collection, ())
+        self.data_thread = Thread(target=self.data_collection, name="data collection")
+        self.data_thread.start()
+        # Start control thread
+        # self.control_thread = _thread.start_new_thread(self.furnace_control, ())
+        self.control_thread = Thread(target=self.furnace_control, name="furnace control")
+        self.control_thread.start()
 
     def clear_serial_input(self):
         self.ser.reset_input_buffer()
@@ -71,6 +83,126 @@ class FurnaceServer(object):
         else:
             cryterion = (self.values[key] >= (1 - self.relative_tolerance)*self.setpoints[key]) and (self.values[key] <= (1 + self.relative_tolerance)*self.setpoints[key])
         return cryterion
+
+    def run_random_heating(self, name = "RANDOM_HEATING", heater = 'main'):
+        lowest_time = {"main": 5, 'seco':1}
+        highest_time = {"main": 20, 'seco':5}
+
+        start_t = datetime.datetime.now().timestamp()
+
+        currently_heating = True
+        randomize_power = True
+        time_before_power_reset = 1
+
+        while self.random_heating_run:
+            if currently_heating:
+                time_to_heat = np.random.uniform(low=lowest_time[heater], high=highest_time[heater])
+            else:
+                time_to_heat = np.random.uniform(low=lowest_time[heater]*4, high=highest_time[heater]*4)
+
+            self.program_current_wait = time_to_heat*60
+            previous_time = datetime.datetime.now().timestamp()
+            power_value = np.random.uniform()
+
+            time_power_reset = 0
+            while (self.program_current_wait > 0) and self.random_heating_run:
+                current_time = datetime.datetime.now().timestamp()
+                delta_time = current_time - previous_time
+
+                # Check if temperature is above maximum values
+                if currently_heating:
+                    ret = self.get_vals(t0=time.time() - 2)
+                    ret = json.loads(ret)
+                    if 'data' in ret:
+                        graph_data = ret["data"]
+                        if max(graph_data['Temperature_sample']) > 950:
+                            self.program_current_wait = 0
+
+                    if randomize_power:
+                        if time_power_reset >= time_before_power_reset:
+                            time_power_reset = 0
+                            power_value += np.random.uniform(low = -0.1, high = 0.1)
+                            power_value = min(max(power_value, 0), 1)
+                        else:
+                            time_power_reset += delta_time
+
+                self.values['Power_'+heater] = currently_heating*power_value
+
+                previous_time = current_time
+                self.program_current_wait -= delta_time  
+                self.program_current_wait_status = "{:02d}:{:02d}".format(int(self.program_current_wait)//60, int(self.program_current_wait)%60)
+                time.sleep(0.25/4)
+
+            currently_heating = not currently_heating
+            if currently_heating:
+                randomize_power = not randomize_power
+
+        end_t = datetime.datetime.now().timestamp()
+        # print((end_t - start_t)/60)
+
+        database = sqlite3.connect(self.dbName)
+        db_write_cursor = database.cursor()
+        db_write_cursor.execute('INSERT INTO programs VALUES (?,?,?)', (start_t, end_t, name))
+        database.commit()
+        database.close()
+
+        self.random_heating_thread = None
+        self.random_setpoint_thread = None
+
+    def run_random_setpoint(self, name = "RANDOM_setpoint", heater = 'main'):
+        # mins
+        lowest_time = {"main": 10, 'seco':2}
+        highest_time = {"main": 60, 'seco':10}
+
+        start_t = datetime.datetime.now().timestamp()
+
+        currently_heating = True
+        while self.random_setpoint_run:
+            if currently_heating:
+                time_to_heat = np.random.uniform(low=lowest_time[heater], high=highest_time[heater])
+                setpoint = np.random.uniform()*950
+            else:
+                time_to_heat = np.random.uniform(low=lowest_time[heater]*10, high=highest_time[heater]*10)
+                setpoint = np.random.uniform()*25
+
+            self.program_current_wait = time_to_heat*60
+            previous_time = datetime.datetime.now().timestamp()
+
+            time_power_reset = 0
+            while (self.program_current_wait > 0) and self.random_setpoint_run:
+                current_time = datetime.datetime.now().timestamp()
+                delta_time = current_time - previous_time
+
+                # Check if temperature is above maximum values
+                if currently_heating:
+                    ret = self.get_vals(t0=time.time() - 2)
+                    ret = json.loads(ret)
+                    if 'data' in ret:
+                        graph_data = ret["data"]
+                        if max(graph_data['Temperature_sample']) > 950:
+                            self.program_current_wait = 0
+
+                if heater=='main':
+                    self.setpoints['Temperature_sample'] = setpoint
+                elif heater=='seco':
+                    self.setpoints['Temperature_halcogenide'] = setpoint
+
+                previous_time = current_time
+                self.program_current_wait -= delta_time  
+                self.program_current_wait_status = "{:02d}:{:02d}".format(int(self.program_current_wait)//60, int(self.program_current_wait)%60)
+                time.sleep(0.25/4)
+
+            currently_heating = not currently_heating
+
+        end_t = datetime.datetime.now().timestamp()
+        # print((end_t - start_t)/60)
+
+        database = sqlite3.connect(self.dbName)
+        db_write_cursor = database.cursor()
+        db_write_cursor.execute('INSERT INTO programs VALUES (?,?,?)', (start_t, end_t, name))
+        database.commit()
+        database.close()
+        self.random_setpoint_thread = None
 
     def run_program(self, name = "TEST"):
         def run_step():
@@ -134,8 +266,15 @@ class FurnaceServer(object):
         self.clear_serial_input()
         self.ser.write(('get,' + '\r\n').encode())
         ret = self.ser.read_until().decode()
+
         sensor_values = re.findall('(.+?),', ret)
-        ar_flow, h2_flow, Temperature_sample, Temperature_halcogenide = [float(x) for x in sensor_values]
+        if sensor_values is None:
+            return None
+        try:
+            ar_flow, h2_flow, Temperature_sample, Temperature_halcogenide = [float(x) for x in sensor_values]
+        except Exception as e:
+            print(e)
+            return None
 
         t2 = time.time()
 
@@ -143,18 +282,16 @@ class FurnaceServer(object):
         t = np.mean([t1, t2])
 
         # Value of current dictionary
-        ret = {
-            "ar_flow": ar_flow,
-            "h2_flow": h2_flow,
-            "time": t,
-            "Temperature_sample": Temperature_sample,
-            "Temperature_halcogenide": Temperature_halcogenide}
-        self.values = ret
-        for key in ret:
-            if np.isnan(ret[key]):
-                print(key, "is", ret[key])
-                ret[key] = 25
-        return ret
+        self.values['ar_flow'] = ar_flow
+        self.values['h2_flow'] = h2_flow
+        self.values['time'] = t
+        self.values['Temperature_sample'] = Temperature_sample
+        self.values['Temperature_halcogenide'] = Temperature_halcogenide
+        for key in self.values:
+            if np.isnan(self.values[key]):
+                print(key, "is", self.values[key])
+                self.values[key] = 25
+        return self.values
 
     def send_setpoints(self):
         setpoints_strs = ["{:.2f}".format(self.setpoints[key]) + ',' for key in ['ar_flow', 'h2_flow', 'Temperature_sample', 'Temperature_halcogenide']]
@@ -164,77 +301,103 @@ class FurnaceServer(object):
 
     def send_direct(self):
         setpoints_strs = ["{:.2f}".format(self.setpoints[key]) + ',' for key in ['ar_flow', 'h2_flow']]
-        setpoints_strs +=["{:.2f}".format(self.direct_power_values[key]) +',' for key in ['main', 'seco']]
+        setpoints_strs +=["{:.2f}".format(self.values[key]) +',' for key in ['Power_main', 'Power_seco']]
         total_command = 'set_direct,' + ''.join(setpoints_strs) + '\r\n'
         self.ser.write((total_command).encode())
         return total_command
 
-    def send_gains(self):
-        gains_strs = [str(gain) + ',' for gain in self.sample_gains + self.halcogenide_gains]
-        total_command = 'gains,' + ''.join(gains_strs) + '\r\n'
-        self.ser.write((total_command).encode())
-        return total_command
+    # def send_gains(self):
+    #     gains_strs = [str(gain) + ',' for gain in self.sample_gains + self.halcogenide_gains]
+    #     total_command = 'gains,' + ''.join(gains_strs) + '\r\n'
+    #     self.ser.write((total_command).encode())
+    #     return total_command
+
+    def furnace_control(self):
+        # Create temperature control wrapper quickfix for secondary
+        self.tc = TempController(length_pred = self.length_pred, length_contr = self.length_contr)
+
+        t0 = time.time()
+        last_runs = {'main': t0, 'seco': t0}
+        last_update = {'main': t0, 'seco': t0, 'send': t0}
+
+        while True:
+            current_time = time.time()
+            if self.nn_control:
+                # Main furnace control
+                if (current_time - last_runs['main']) >= self.tc.main_Dt:
+                    print(current_time - last_runs['main'])
+                    last_runs['main'] = time.time()
+                    current_temp = self.values['Temperature_sample']
+                    current_P = self.values['Power_main']
+                    set_tmp = self.setpoints['Temperature_sample']
+                    tmp_T, tmp_P = self.tc.fp_main(current_temp, current_P, set_tmp, self.Tenv)
+                    self.values['Power_main'] = float(tmp_P)
+                    if self.learn_flag:
+                        self.tc.learn_step_main(set_tmp, self.Tenv)
+
+                # Seco temp update
+                if current_time - last_update['seco'] > self.tc.seco_dt:
+                    last_update['seco'] = time.time()
+                    self.tc.update_temp_seco([self.values['Temperature_halcogenide']])
+
+                # Seco furnace control
+                if (current_time - last_runs['seco']) > self.tc.seco_Dt:
+                    last_runs['seco'] = time.time()
+                    self.values['Power_seco'] = self.tc.fp_seco(self.setpoints['Temperature_halcogenide'], self.Tenv)[0][0]
+            if (current_time - last_update['send']) >= 1:
+                with self.serial_lock:
+                    self.send_direct()
+                    time.sleep(0.01)
+            time.sleep(0.01)
+
 
     def data_collection(self, buffer_num = 4):
-        self.t0 = time.time()
-        last_runs = {'main': self.t0, 'seco': self.t0}
-        last_update = {'main': self.t0, 'seco': self.t0}
         database = sqlite3.connect(self.dbName)
         db_write_cursor = database.cursor()
         N = 0
         dbvals = []
-        easy_fix = 4
         # hard_fix = self.tc.main_dt//0.1
+
+        t0 = time.time()
+        DT = 0.25
         while True:
-            ret = self.get_data()
-            dbvals.append([ret[key] for key in key_order])
+            current_time = time.time()
+            if (current_time - t0) >= DT:
+                t0 = current_time
+                with self.serial_lock:
+                    ret = self.get_data()
 
-            # Main temp update
-            if ret['time'] - last_update['main'] > self.tc.main_dt:
-                #  Take mean of main temperatures #dbvals[i][2] for i = max-easy_fix, max (about last second)#
-                self.tc.update_temp_main([np.mean([val[2] for val in dbvals[-easy_fix:]])])
-                last_update['main'] = time.time()
+                if ret:
+                    dbvals.append([ret[key] for key in key_order])
+                else:
+                    print("DATA ERROR")
 
-            # Main furnace control
-            if (ret['time'] - last_runs['main']) > self.tc.main_Dt:
-                # Agregated last n seconds
-                self.direct_power_values['main'] = self.tc.fp_main(self.setpoints['Temperature_sample'], self.Tenv)[0][0]
-                last_runs['main'] = time.time()
 
-            # Seco temp update
-            if ret['time'] - last_update['seco'] > self.tc.seco_dt:
-                # print("SECO_update")
-                self.tc.update_temp_seco([np.mean([val[3] for val in dbvals[-easy_fix:]])])
-                last_update['seco'] = time.time()
+                N += 1
 
-            # Seco furnace control
-            if (ret['time'] - last_runs['seco']) > self.tc.seco_Dt:
-                # print("SECO_control")
-                # Agregated last n seconds
-                self.direct_power_values['seco'] = self.tc.fp_seco(self.setpoints['Temperature_halcogenide'], self.Tenv)[0][0]
-                last_runs['seco'] = time.time()
-
-            print(self.direct_power_values)
-            self.send_direct()
-            time.sleep(0.25)
-
-            N += 1
-
-            if (N%buffer_num) == 0:
-                db_write_cursor.executemany('INSERT INTO logs VALUES (?,?,?,?,?)', dbvals)
-                database.commit()
-                dbvals = []
+                try:
+                    if (N%buffer_num) == 0:
+                        db_write_cursor.executemany('INSERT INTO logs VALUES (?,?,?,?,?,?,?)', dbvals)
+                        database.commit()
+                        dbvals = []
+                        # print(self.values)
+                except Exception as e:
+                    print(e)
+            time.sleep(0.01)
 
     @cherrypy.expose
     def index(self):
         return 'TEST'
 
     @cherrypy.expose
-    def get_vals(self, t0=time.time()):
+    def get_vals(self, t0=0, tend=None):
         database = sqlite3.connect(self.dbName)
         db_read_cursor = database.cursor()
-
-        db_read_cursor.execute('SELECT * FROM logs WHERE (time>=?) AND (time<=?) ORDER BY time asc', (float(t0), float(t0) + self.maxTime))
+        if tend is None:
+            tend = float(t0) + self.maxTime
+        else:
+            tend =  float(tend)
+        db_read_cursor.execute('SELECT * FROM logs WHERE (time>=?) AND (time<=?) ORDER BY time asc', (float(t0), tend))
 
         ret = {}
 
@@ -256,6 +419,19 @@ class FurnaceServer(object):
         return json.dumps(ret)
 
     @cherrypy.expose
+    def get_program_list(self):
+        database = sqlite3.connect(self.dbName)
+        db_read_cursor = database.cursor()
+
+        db_read_cursor.execute('SELECT * FROM programs ORDER BY start_t asc')
+        data = list(db_read_cursor.fetchall())
+
+        ret = {}
+        ret["data"] = data
+
+        return json.dumps(ret)
+
+    @cherrypy.expose
     def set_setpoints(self, ar_flow=None, h2_flow=None, Temperature_sample=None, Temperature_halcogenide=None):
         if ar_flow is not None:
             self.setpoints["ar_flow"] = float(ar_flow)
@@ -265,25 +441,9 @@ class FurnaceServer(object):
             self.setpoints["Temperature_sample"] = float(Temperature_sample)
         if Temperature_halcogenide is not None:
             self.setpoints["Temperature_halcogenide"] = float(Temperature_halcogenide)
-        self.send_setpoints()
+        with self.serial_lock:
+            self.send_setpoints()
         return "setpoints set"
-
-    @cherrypy.expose
-    def set_gains(self, T_samp_p=None, T_samp_i=None, T_samp_d=None, T_halc_p=None, T_halc_i=None, T_halc_d=None):
-        if T_samp_p is not None:
-            self.sample_gains[0] = float(T_samp_p)
-        if T_samp_i is not None:
-            self.sample_gains[1] = float(T_samp_i)
-        if T_samp_d is not None:
-            self.sample_gains[2] = float(T_samp_d)
-        if T_halc_p is not None:
-            self.halcogenide_gains[0] = float(T_halc_p)
-        if T_halc_i is not None:
-            self.halcogenide_gains[1] = float(T_halc_i)
-        if T_halc_d is not None:
-            self.halcogenide_gains[2] = float(T_halc_d)
-        self.send_gains()
-        return "gains set"
 
     @cherrypy.expose
     def add_to_program(self, ar_flow=0, h2_flow=0, Temperature_sample=0, Temperature_halcogenide=0, time=0):
@@ -296,7 +456,7 @@ class FurnaceServer(object):
     @cherrypy.expose
     def start_program(self, state = "start", name="TEST"):
         print(name)
-        if state == "start":
+        if state == "start" and self.random_heating_thread is None:
             if self.program_thread is None:
                 self.program_run = True
                 self.program_thread = _thread.start_new_thread(self.run_program, (name,))
@@ -308,6 +468,50 @@ class FurnaceServer(object):
             self.program_thread = None
             self.program_current_wait_status = "None"
 
+    @cherrypy.expose
+    def start_random_heating(self, state = "start", heater='main', name="TEST"):
+        print(name)
+        if state == "start" and self.program_thread is None:
+            if self.random_heating_thread is None:
+                if self.random_setpoint_thread is not None:
+                    self.start_random_heating(state = "stop")
+                self.nn_control = False
+                self.random_heating_run = True
+                self.random_heating_thread = _thread.start_new_thread(self.run_random_heating, (name, heater))
+                return "Random heating..."
+            else:
+                return "Random heating ALREADY RUNNING"
+        elif state == "stop":
+            self.random_heating_run = False
+            self.random_heating_thread = None
+            self.nn_control = True
+            self.program_current_wait_status = "None"
+
+    @cherrypy.expose
+    def start_random_setpoint(self, state = "start", heater='main', name="TEST"):
+        print(name)
+        if state == "start" and self.program_thread is None:
+            if self.random_setpoint_thread is None:
+                if self.random_heating_thread is not None:
+                    self.start_random_heating(state = "stop")
+                self.nn_control = True
+                self.random_setpoint_run = True
+                self.random_setpoint_thread = _thread.start_new_thread(self.run_random_setpoint, (name, heater))
+                return "Random setpoint..."
+            else:
+                return "Random setpoint ALREADY RUNNING"
+        elif state == "stop":
+            self.random_setpoint_run = False
+            self.random_setpoint_thread = None
+            self.program_current_wait_status = "None"
+
+    @cherrypy.expose
+    def start_learning(self, state="start", name="TEST"):
+        print(name)
+        if state == "start":
+            self.learn_flag = True
+        elif state == "stop":
+            self.learn_flag = False
 
 if __name__ == '__main__':
     dbName = "furnaceActivity.db"
@@ -320,8 +524,8 @@ if __name__ == '__main__':
     cherrypy.config.update({
                 'server.socket_host': '0.0.0.0',
                 'server.socket_port': 1234,
-                'log.screen': False,
+                'log.screen': True,
                 })
 
-    cherrypy.log.access_log.propagate = False
+    # cherrypy.log.access_log.propagate = False
     cherrypy.quickstart(FurnaceServer(dbName), '/', conf)

@@ -7,43 +7,52 @@ from kivy_garden.graph import Graph, LinePlot, HBar
 
 from kivy.clock import Clock
 
+flow_color = [1, 0, 0, 1]
+temp_color = [0, 1, 0, 1]
+temp_predict_color = [0, 1, 0, 0.5]
+power_color = [1, 1, 0, 0.4]
+setpoint_color = [0.3, 0.3, 1, 0.8]
+
 class Values_control_layout(GridLayout):
     """docstring for Values_control_layout"""
     def __init__(self, *args, **kwargs):
         super(Values_control_layout, self).__init__(*args, **kwargs)
-        Clock.schedule_once(self.initialize_plots, 1)
 
     def initialize_plots(self, dt):
-        flow_color = [1, 0, 0, 1]
-        temp_color = [0, 1, 0, 1]
-        setpoint_color = [0.5, 0.5, 1, 1]
         # point_size = 2
-        line_width = 3
+        line_width = 1.5
 
         # self.ar_flow_plot = ScatterPlot(color=flow_color, point_size=point_size)
         self.ar_flow_plot = LinePlot(color=flow_color, line_width=line_width)
-        self.ar_flow_setpoint_plot = HBar(color=setpoint_color)
+        self.ar_flow_setpoint_plot = LinePlot(color=setpoint_color, line_width=line_width/2)
         self.ids.ar_flow.add_plot(self.ar_flow_plot)
         self.ids.ar_flow.add_plot(self.ar_flow_setpoint_plot)
 
         # self.h2_flow_plot = ScatterPlot(color=flow_color, point_size=point_size)
         self.h2_flow_plot = LinePlot(color=flow_color, line_width=line_width)
-        self.h2_flow_setpoint_plot = HBar(color=setpoint_color)
+        self.h2_flow_setpoint_plot = LinePlot(color=setpoint_color, line_width=line_width/2)
         self.ids.h2_flow.add_plot(self.h2_flow_plot)
         self.ids.h2_flow.add_plot(self.h2_flow_setpoint_plot)
 
         # self.samp_temp_plot = ScatterPlot(color=temp_color, point_size=point_size)
         self.samp_temp_plot = LinePlot(color=temp_color, line_width=line_width)
-        self.samp_temp_setpoint_plot = HBar(color=setpoint_color)
+        self.samp_temp_setpoint_plot = LinePlot(color=setpoint_color, line_width=line_width/2)
+        self.samp_power_plot = LinePlot(color=power_color, line_width=line_width)
         self.ids.samp_temp.add_plot(self.samp_temp_plot)
         self.ids.samp_temp.add_plot(self.samp_temp_setpoint_plot)
+        self.ids.samp_temp.add_plot(self.samp_power_plot)
 
         # self.halc_temp_plot = ScatterPlot(color=temp_color, point_size=point_size)
         self.halc_temp_plot = LinePlot(color=temp_color, line_width=line_width)
-        self.halc_temp_setpoint_plot = HBar(color=setpoint_color)
+        self.halc_temp_setpoint_plot = LinePlot(color=setpoint_color, line_width=line_width/2)
+        self.halc_power_plot = LinePlot(color=power_color, line_width=line_width)
         self.ids.halc_temp.add_plot(self.halc_temp_plot)
         self.ids.halc_temp.add_plot(self.halc_temp_setpoint_plot)
+        self.ids.halc_temp.add_plot(self.halc_power_plot)
 
+    def add_plot(self, color, line_width, plotType=LinePlot):
+        plot = plotType(color=color, line_width = line_width)
+        return plot
 
 class ControlBox(BoxLayout):
     """docstring for ControlBox"""
