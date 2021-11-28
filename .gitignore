@@ -1,4 +1,6 @@
 *.db
+*.db.bak
+*.db.archive*
 *.db-journal
 *.pyc
 *__pycache__/*
@@ -9,3 +11,4 @@ client/.buildozer/*
 client/bin/*
 client/build/*
 client/dist/*
+*agent_model*
